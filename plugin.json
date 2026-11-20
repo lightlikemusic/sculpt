@@ -1,0 +1,17 @@
+{
+  "name": "Sculpt",
+  "manufacturer": "Lightlike",
+  "version": "1.0.0",
+  "format": "vst2",
+  "kind": "instrument",
+  "uid": "Lal3",
+  "numInputs": 0,
+  "numOutputs": 2,
+  "category": "Synth",
+  "file32": "VST/sculpt-arm32.so",
+  "file64": "VST/sculpt-arm64.so",
+  "description": "Sculpt: a 4-voice synth for the MPC. Describe your plugin here.",
+  "author": "Lightlike",
+  "url": "https://github.com/lightlikemusic/sculpt",
+  "license": "MIT"
+}
