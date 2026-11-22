@@ -7,10 +7,10 @@
   "uid": "Lal3",
   "numInputs": 0,
   "numOutputs": 2,
-  "category": "Synth",
+  "category": "Sampler",
   "file32": "VST/sculpt-arm32.so",
   "file64": "VST/sculpt-arm64.so",
-  "description": "Sculpt: a 4-voice synth for the MPC. Describe your plugin here.",
+  "description": "Sculpt: four tracks of loop shaping. Each track runs a loop through Source, Grain, Filter, Color and Space, with a screen per module and the Q-Links following it.",
   "author": "Lightlike",
   "url": "https://github.com/lightlikemusic/sculpt",
   "license": "MIT"
