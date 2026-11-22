@@ -78,7 +78,7 @@ int main()
         g.p.set(kEditTrack, 1.0f); g.blocks(3);
         CHECK(g.text(vFile) == "3 Choir" && g.p.getBool(bidx(1, bHasFile)), "and track 2 still shows its file, 3 Choir (%s)", g.text(vFile).c_str());
         g.p.set(kEditTrack, 0.0f); g.blocks(3);
-        // on a track tab's Space page, the CHORUS column's first knob is that track's chorus amount
+        // on the Space page, the CHORUS column's first knob is the picked track's chorus amount
         g.p.set(kPage0 + 0, 4.0f); g.blocks(3);
         g.p.setNormalised(knobIdx(0, 0), g.p.param(cidx(0, cAmount)).toNormalised(40.0f)); g.blocks(3);
         CHECK(std::lround(g.p.get(cidx(0, cAmount))) == 40, "CHORUS AMOUNT on track 1's Space page sets its chorus (%.0f)", g.p.get(cidx(0, cAmount)));
@@ -86,10 +86,10 @@ int main()
         CHECK(std::lround(g.p.get(viewParam(kVChorus + cAmount))) == 0 && g.text(viewParam(kVChorus + cRate)) == "0.60 Hz",
               "track 3 shows its own chorus (%s, %s)", g.text(viewParam(kVChorus + cAmount)).c_str(), g.text(viewParam(kVChorus + cRate)).c_str());
         CHECK(g.p.param(viewParam(kVChorus + cWidth)).name == "Width" && g.p.param(viewParam(kVChorus + cAmount)).name == "Amount", "the chorus boxes are captioned Amount, Rate, Depth, Width");
-        g.p.set(kPage0 + 2, 4.0f); g.blocks(3);   // track 3's tab on its Space page: knob 12 is the reverb Mix
-        g.p.setNormalised(knobIdx(2, 11), g.p.param(kRevMixBase + 2).toNormalised(80.0f)); g.blocks(3);
+        // track 3 picked, still on the Space page: knob 12 is its reverb Mix
+        g.p.setNormalised(knobIdx(0, 11), g.p.param(kRevMixBase + 2).toNormalised(80.0f)); g.blocks(3);
         CHECK(std::lround(g.p.get(kRevMixBase + 2)) == 80 && std::lround(g.p.get(kRevMixBase + 0)) == 20 && g.p.param(kViewRevMix).name == "Mix",
-              "MIX on track 3's tab sets its reverb mix only (track 3 %.0f, track 1 %.0f)", g.p.get(kRevMixBase + 2), g.p.get(kRevMixBase + 0));
+              "MIX with track 3 picked sets its reverb mix only (track 3 %.0f, track 1 %.0f)", g.p.get(kRevMixBase + 2), g.p.get(kRevMixBase + 0));
         g.p.set(kEditTrack, 0.0f); g.blocks(3);
     }
     {
@@ -130,7 +130,7 @@ int main()
         // grains (35 ms) still show, since each bar stays up a moment
         Rig g;
         g.p.set(idx(0, pGrainOn), 1.0f); g.p.set(idx(0, pLock), 1.0f); g.p.set(idx(0, pGSize), 35.0f); g.p.set(idx(0, pGDensity), 80.0f);
-        g.p.set(kPage0 + 0, 1.0f);   // track 1's tab on its Grain page: its pixel waveform is live
+        g.p.set(kPage0, 1.0f);   // the Grain page: track 1's pixel waveform is live
         g.blocks(1400);   // ~4 s of silence first: Lock must not keep that
         g.p.handleMidi(mpc::MidiEvent::noteOn(0, 24, 110));
         g.blocks(2300);
@@ -153,7 +153,7 @@ int main()
         // the pixel waveform: Grain off = the whole sample solid, at its own heights; Grain on and
         // playing = solid where grains pick from, dissolving more the further away
         Rig g;
-        g.p.set(kPage0 + 0, 1.0f); g.blocks(40);   // track 1's tab on its Grain page
+        g.p.set(kPage0, 1.0f); g.blocks(40);   // the Grain page
         auto frameOf = [&](int c) { return (int)std::lround(g.p.getNormalised(kGrainPix0 + c) * (kPixHeights * kPixDissolve - 1)); };
         int solid = 0, tall = 0;
         for (int c = 0; c < kPixCols; ++c) { solid += frameOf(c) % kPixDissolve == 0; tall += frameOf(c) / kPixDissolve > 2; }
@@ -173,7 +173,7 @@ int main()
         // the Filter screen's live spectrum: silence shows nothing; playing shows the sound; with a
         // low cutoff the sound coming out falls well below the sound going in at the top end only
         Rig g;
-        g.p.set(kPage0 + 0, 2.0f);   // track 1's tab on its Filter page: its spectrum is live
+        g.p.set(kPage0, 2.0f);   // the Filter page: track 1's spectrum is live
         g.blocks(40);
         float sumIn = 0.0f; for (int b = 0; b < kSpecBands; ++b) sumIn += g.p.getNormalised(kSpecIn0 + b);
         CHECK(sumIn < 0.5f, "Filter screen: silence shows (almost) nothing (%.2f)", sumIn);
@@ -238,55 +238,43 @@ int main()
         }
     }
     {
-        // track tabs: each track's knobs follow the page its tab shows, both ways, and the pictures
-        // follow the track tab the MPC is showing
+        // track keys and page keys: the 12 knobs follow the page on screen for the picked track,
+        // both ways; picking a track moves the knobs, the view, the pictures and channel-1 pads
         Rig g;
         g.blocks(4);
-        CHECK(std::fabs(g.p.getNormalised(knobIdx(1, 1)) - g.p.getNormalised(idx(1, pLength))) < 1e-6f,
-              "track 2's tab opens on Source: knob 2 is its Length");
-        g.p.set(kPage0 + 1, 2.0f); g.blocks(3);   // track 2 -> Filter page
-        CHECK(std::fabs(g.p.getNormalised(knobIdx(1, 0)) - g.p.getNormalised(idx(1, pCutoff))) < 1e-6f,
+        CHECK(std::fabs(g.p.getNormalised(knobIdx(0, 1)) - g.p.getNormalised(idx(0, pLength))) < 1e-6f,
+              "it opens on Source for track 1: knob 2 is its Length");
+        g.p.set(kEditTrack, 1.0f); g.blocks(3);   // track key 2
+        CHECK(std::fabs(g.p.getNormalised(knobIdx(0, 1)) - g.p.getNormalised(idx(1, pLength))) < 1e-6f,
+              "track key 2: knob 2 is track 2's Length");
+        g.p.set(kPage0, 2.0f); g.blocks(3);   // Filter page
+        CHECK(std::fabs(g.p.getNormalised(knobIdx(0, 0)) - g.p.getNormalised(idx(1, pCutoff))) < 1e-6f,
               "on the Filter page knob 1 becomes Cutoff");
-        g.p.setNormalised(knobIdx(1, 0), 0.25f); g.blocks(2);
+        g.p.setNormalised(knobIdx(0, 0), 0.25f); g.blocks(2);
         CHECK(std::fabs(g.p.getNormalised(idx(1, pCutoff)) - 0.25f) < 1e-6f && std::fabs(g.p.getNormalised(idx(0, pCutoff)) - 0.25f) > 1e-3f,
               "turning it moves track 2's Cutoff only");
         g.p.set(idx(1, pReso), 80.0f); g.blocks(2);
-        CHECK(std::fabs(g.p.getNormalised(knobIdx(1, 1)) - g.p.getNormalised(idx(1, pReso))) < 1e-6f,
+        CHECK(std::fabs(g.p.getNormalised(knobIdx(0, 1)) - g.p.getNormalised(idx(1, pReso))) < 1e-6f,
               "and Reso set some other way shows on its knob");
-        CHECK(g.text(knobIdx(1, 1)) == g.text(idx(1, pReso)), "a knob reads like its setting (\"%s\")", g.text(knobIdx(1, 1)).c_str());
-        g.blocks(2);
-        CHECK(g.p.screenTrack() == 1 && g.p.getInt(kEditTrack) == 0, "the pictures follow the track tab on screen (track %d), no saved setting changes", g.p.screenTrack() + 1);
-        {   // formatting a value inside the plugin (the debug log does) must not move it
-            std::thread th([&] { tlQuietFormat = true; (void)g.p.displayText(knobIdx(3, 0)); });
-            th.join();
-            CHECK(g.p.screenTrack() == 1, "the debug log formatting track 4's knob leaves it on track 2 (track %d)", g.p.screenTrack() + 1);
-        }
-        g.p.set(kPage0 + 2, 4.0f); g.blocks(3);   // track 3 -> Space page: reverb Type is knob 9
-        CHECK(std::fabs(g.p.getNormalised(knobIdx(2, 8)) - g.p.getNormalised(kRevTypeBase + 2)) < 1e-6f &&
-              std::fabs(g.p.getNormalised(knobIdx(2, 0)) - g.p.getNormalised(cidx(2, cAmount))) < 1e-6f,
+        CHECK(g.text(knobIdx(0, 1)) == g.text(idx(1, pReso)), "a knob reads like its setting (\"%s\")", g.text(knobIdx(0, 1)).c_str());
+        g.p.set((kViewBase + pFilterOn), 0.0f); g.blocks(2);   // the ON key on the Filter page
+        CHECK(!g.p.getBool(idx(1, pFilterOn)) && g.p.getBool(idx(0, pFilterOn)), "the ON key turns off track 2's Filter only");
+        g.p.set(kEditTrack, 0.0f); g.blocks(3);
+        CHECK(std::fabs(g.p.getNormalised(knobIdx(0, 0)) - g.p.getNormalised(idx(0, pCutoff))) < 1e-6f && g.p.getBool((kViewBase + pFilterOn)),
+              "back to track 1: the knobs and keys show track 1 again");
+        g.p.set(kPage0, 4.0f); g.blocks(3);   // Space page: reverb Type is knob 9
+        CHECK(std::fabs(g.p.getNormalised(knobIdx(0, 8)) - g.p.getNormalised(kRevTypeBase + 0)) < 1e-6f &&
+              std::fabs(g.p.getNormalised(knobIdx(0, 0)) - g.p.getNormalised(cidx(0, cAmount))) < 1e-6f,
               "Space page: knobs 1-4 chorus, 5-8 delay, 9-12 reverb");
-        g.p.set(kPage0 + 0, 0.0f); g.blocks(3);
+        g.p.set(kPage0, 0.0f); g.blocks(3);
         CHECK(std::fabs(g.p.getNormalised(knobIdx(0, 8)) - g.p.getNormalised(bidx(0, bFolder))) < 1e-6f,
               "Source page: knobs 9-10 browse folders and files");
-    }
-    {
-        // the MPC's once-a-second sweep (every track's knobs at once) does not move the pads; a tab
-        // appearing (the MPC asking only for that track's knobs) makes the pads play that track
-        Rig g;
-        g.blocks(4);
-        for (int t = 0; t < kNumTracks; ++t) for (int k = 0; k < kKnobs; ++k) (void)g.text(knobIdx(t, k));   // a sweep
-        g.blocks(4);
-        CHECK(g.p.screenTrack() == 0, "a sweep of all four tracks leaves the pads on track 1 (track %d)", g.p.screenTrack() + 1);
-        for (int k = 0; k < 8; ++k) (void)g.text(knobIdx(2, k));   // track 3's tab comes on screen
-        g.blocks(4);
-        CHECK(g.p.screenTrack() == 2, "track 3's tab appearing makes the pads play track 3 (track %d)", g.p.screenTrack() + 1);
+        g.p.set(kEditTrack, 2.0f); g.blocks(3);
         g.p.handleMidi(mpc::MidiEvent::noteOn(0, 24, 100));   // MIDI channel 1
         g.blocks(40);
-        CHECK(g.p.getNormalised(markIdx(2, 0)) > 0.0f && g.p.getNormalised(kPlayhead) == 0.0f, "and a pad plays track 3, not track 1");
+        CHECK(g.p.tracks_[2].playPosition() >= 0.0 && g.p.tracks_[0].playPosition() < 0.0 && g.p.getNormalised(kPlayhead) > 0.0f,
+              "track 3 picked: a pad plays track 3, and its playhead shows");
         g.p.handleMidi(mpc::MidiEvent::noteOff(0, 24));
-        for (int t = 0; t < kNumTracks; ++t) for (int k = 0; k < kKnobs; ++k) (void)g.text(knobIdx(t, k));   // another sweep
-        g.blocks(4);
-        CHECK(g.p.screenTrack() == 2, "the next sweep leaves it on track 3");
     }
     setvbuf(stdout, nullptr, _IONBF, 0);
     const int T = 1;   // test on track 2
@@ -402,12 +390,11 @@ int main()
               "a preset opens on track 1 with the view matching");
         {   // loading a preset never lets the knobs overwrite what it set
             float worst = 0.0f;
-            for (int t = 0; t < kNumTracks; ++t)
-                for (int k = 0; k < kKnobs; ++k)
-                {
-                    const int target = cellTarget(t, g.p.getInt(kPage0 + t), k);
-                    if (target >= 0) worst = std::fmax(worst, std::fabs(g.p.getNormalised(knobIdx(t, k)) - g.p.getNormalised(target)));
-                }
+            for (int k = 0; k < kKnobs; ++k)
+            {
+                const int target = cellTarget(0, g.p.getInt(kPage0), k);
+                if (target >= 0) worst = std::fmax(worst, std::fabs(g.p.getNormalised(knobIdx(0, k)) - g.p.getNormalised(target)));
+            }
             CHECK(worst < 1e-6f && g.p.get(idx(1, pDrive)) > 40.0f, "a preset's settings survive, and every knob matches its setting");
         }
     }
@@ -568,8 +555,9 @@ int main()
         CHECK(g.p.getNormalised(kPlayhead) == 0.0f, "and it hides when the note has ended");
         g.p.handleMidi(mpc::MidiEvent::noteOn(2, 24, 100));   // MIDI channel 3: track 2
         g.blocks(60);
-        CHECK(g.p.getNormalised(markIdx(1, 0)) > 0.0f && g.p.getNormalised(kPlayhead) == 0.0f,
-              "each track has its own playhead: track 2's moves, track 1's stays hidden");
+        CHECK(g.p.getNormalised(kPlayhead) == 0.0f, "track 2 playing does not move track 1's playhead");
+        g.p.set(kEditTrack, 1.0f); g.blocks(4);
+        CHECK(g.p.getNormalised(kPlayhead) > 0.0f, "pick track 2 and its playhead shows");
     }
     {
         // Rotate/Length: a tape loop; it starts at Rotate, covers Length, and wraps round the sample's end
@@ -711,18 +699,15 @@ int main()
         for (int c = 0; c < kWaveCols; ++c) { lo = std::fmin(lo, g.p.getNormalised(kWave0 + c)); hi = std::fmax(hi, g.p.getNormalised(kWave0 + c)); }
         CHECK(same(g.p.samples_[0]) && hi > 0.9f && lo < 0.6f, "track 1 shows its loop's shape (columns %.2f-%.2f)", lo, hi);
         g.p.set(kEditTrack, 1); g.blocks(2);
-        auto sameT = [&](int t, const sculpt::Sample& smp)
-        {
-            for (int c = 0; c < kWaveCols; ++c) if (std::fabs(g.p.getNormalised(waveIdx(t, c)) - smp.peaks[c]) > 1e-6f) return false;
-            return true;
-        };
-        CHECK(sameT(1, g.p.samples_[1]) && sameT(3, g.p.samples_[3]), "each track's tab has its own waveform: track 2 its loop, track 4 its loop");
+        CHECK(same(g.p.samples_[1]), "track key 2: the waveform shows track 2's loop");
         // load a file on track 2: its own shape replaces the loop's
         CHECK(g.waitFor([&] { return g.p.scanner_.library() != nullptr; }), "library ready");
         g.press(bidx(1, bFolderNext));
         CHECK(g.waitFor([&] { return g.p.active_[1] != nullptr; }), "a file loads on track 2");
         g.blocks(2);
-        CHECK(sameT(1, *g.p.active_[1]) && same(g.p.samples_[0]), "track 2's waveform shows that file, and track 1's is unchanged");
+        CHECK(same(*g.p.active_[1]), "track 2's waveform shows that file");
+        g.p.set(kEditTrack, 0); g.blocks(2);
+        CHECK(same(g.p.samples_[0]), "and track 1's is unchanged");
     }
     std::printf("%s (%d failures)\n", failures ? "FAIL" : "PASS", failures);
     return failures ? 1 : 0;

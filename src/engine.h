@@ -225,8 +225,8 @@ public:
         std::fill(cols_, cols_ + kGrainCols, 0.0f); colPeak_ = 0.0f; colHead_ = 0; grainFilled_ = 0;
         std::fill(colPos_, colPos_ + kGrainCols, -1.0f);
         cur_ = Region(); regX_ = 0.0f; pFade_ = 0.0f; lastPRatio_ = 1.0;
-        for (Svf& s : lp_) s.reset();
-        for (Svf& s : res_) s.reset();
+        for (Svf& s : band_) s.reset();
+        std::fill(bandW_, bandW_ + kBands, 0.0f);
         fTiltLp_ = cTiltLp_ = 0.0f;
         noiseEnv_ = noiseLp_ = 0.0f;
         compEnv_ = 0.0f; compGain_ = 1.0f; compCount_ = 0;
@@ -334,6 +334,19 @@ public:
             Region want;
             want.start = std::fmin(std::floor((double)p.start * N), (double)N - 64.0);
             want.len = std::fmax(64.0, std::fmin((double)p.length * N, (double)N - want.start));
+            if (p.sync)
+            {   // SYNC: Start and Length move in beat steps (the sample counts as a whole number of
+                // beats), so the loop always plays at the one speed the tempo sets and Length never
+                // changes its pitch. Length goes 1/16 beat, 1/8, ... up to the whole sample.
+                const double beat = (double)N / sampleBeats(smp);
+                const double steps = std::log2(sampleBeats(smp) * 16.0);   // 1/16 beat .. the whole sample
+                const double k = std::round(clamp(p.length, 0.0f, 1.0f) * steps);
+                want.len = std::fmin((double)N, beat / 16.0 * std::pow(2.0, k));
+                const double grid = beat / 4.0;                            // Start: a 1/16 note grid
+                want.start = std::floor((double)p.start * N / grid) * grid;
+                if (want.start + want.len > (double)N) want.start = std::fmax(0.0, (double)N - want.len);
+                want.start = std::floor(want.start);
+            }
             want.rot = (double)p.rotate * want.len;
             want.fade = (float)std::fmin(want.len * 0.5, std::fmax(1.0, p.fadeMs * 0.001 * smp.rate));
             want.n = N; want.id = smp.id;
@@ -374,9 +387,7 @@ public:
 
         // the running loop: its region spans a whole number of beats (a power of two), so it stays
         // in time at any tempo; Speed plays it faster or slower by whole factors of that
-        const double regionSec = regionLen / smp.rate;
-        double beats = std::pow(2.0, std::round(std::log2(std::fmax(1e-3, regionSec * 2.0))));   // at 120 BPM
-        beats = std::fmin(64.0, std::fmax(1.0, beats));
+        const double beats = std::fmax(1.0 / 16.0, regionLen / ((double)N / sampleBeats(smp)));   // exact: Length is in beat steps
         const double speedAbs = std::fabs((double)p.speed);
         // The loop plays continuously and is steered gently towards the host's song position, so a
         // coarse or jittery position never makes it jump. It only jumps (with a short crossfade) when
@@ -936,51 +947,67 @@ public:
     static constexpr int kGrainColLen = kGrainBufSize / kGrainCols;   // 4096 samples per column
 private:
 
+public:
+    // How many beats the whole sample counts as in SYNC: its length at 120 BPM, rounded to a power
+    // of two (1 to 64), like a loop cut to whole bars.
+    static double sampleBeats(const Sample& smp)
+    {
+        const double sec = (double)smp.size() / smp.rate;
+        return std::fmin(64.0, std::fmax(1.0, std::pow(2.0, std::round(std::log2(std::fmax(1e-3, sec * 2.0))))));
+    }
+private:
+
     // ---------------------------------------------------------------- Filter
     void setupFilter(const TrackParams& p)
     {
-        stages_ = p.slope == 0 ? 1 : (p.slope == 1 ? 2 : 4);
-        const float g = gFor(p.cutoff, sr_);
-        for (int s = 0; s < stages_; ++s)
-            lp_[s].set(g, s == stages_ - 1 ? 1.41f - 1.05f * p.reso : 1.41f);
-        // Resonators: a chord of the chosen scale (1st, 3rd and 5th degrees plus the octave) on the
-        // root Pitch sets (C + Pitch), in the octave that holds the cutoff. Each step of Pitch moves
-        // the whole chord by a semitone; Cutoff picks the octave it rings in.
-        const float nc = clamp(mpc::dsp::hzToMidi(p.cutoff), 30.0f, 118.0f);
+        // A bank of up to 32 resonant bands, each tuned to a note of the Scale (moved by Pitch),
+        // spread from C1 to E9. Cutoff, Slope (low / band / high), Reso and Tone set how loud each
+        // band is. With a short Decay the bands are wide and overlap, so the bank passes the sound
+        // through, shaped; a longer Decay narrows them until each one rings at its note.
         const int sc = clamp(p.scale, 0, 3);
-        int base = 48 + p.fPitch;                         // C3 + Pitch
-        while ((float)base > nc) base -= 12;
-        while ((float)(base + 12) <= nc) base += 12;
-        static const int kChrom[4] = {0, 4, 7, 12};       // Chrom has no chord of its own: a major triad
-        int bestN[4];
-        for (int k = 0; k < 4; ++k)
-            bestN[k] = base + (sc == 0 ? kChrom[k] : (k == 3 ? 12 : kScales[sc][k * 2]));
-        for (int k = 0; k < 4; ++k)
+        int notes[112], n = 0;
+        for (int m = 24; m <= 124; ++m)
         {
-            const float f = clamp(mpc::dsp::midiToHz((float)bestN[k]), 30.0f, 0.42f * sr_);
-            const float q = clamp(kPi * f * p.fDecayMs * 0.001f / 6.91f, 0.7f, 2000.0f);
-            res_[k].set(gFor(f, sr_), 1.0f / q);
-            resK_[k] = 1.0f / q;
+            const int d = ((m - p.fPitch) % 12 + 12) % 12;
+            for (int j = 0; j < kScaleLen[sc]; ++j)
+                if (kScales[sc][j] == d) { notes[n++] = m; break; }
         }
+        nBands_ = std::min(kBands, n);
+        const float spacing = std::fmax(1.0f, (float)(notes[n - 1] - notes[0]) / (float)(nBands_ - 1));   // semitones
+        const float qWide = 0.9f * 17.3f / spacing;          // neighbours overlap: the bank passes sound through
+        const float lc = std::log2(clamp(p.cutoff, 20.0f, 20000.0f));
+        for (int b = 0; b < nBands_; ++b)
+        {
+            const int note = notes[(int)std::lround((float)b * (float)(n - 1) / (float)(nBands_ - 1))];
+            const float f = mpc::dsp::midiToHz((float)note);
+            if (f > 0.42f * sr_) { bandTarget_[b] = 0.0f; continue; }
+            const float qRing = kPi * f * p.fDecayMs * 0.001f / 6.91f;   // rings for about Decay
+            const float q = clamp(std::fmax(qWide, qRing), 0.5f, 3000.0f);
+            band_[b].set(gFor(f, sr_), 1.0f / q);
+            bandK_[b] = 1.0f / q;                             // each band peaks at unity
+            const float x = std::log2(f) - lc;                // octaves from the cutoff
+            float shape = p.slope == 0 ? 1.0f / (1.0f + std::exp(4.0f * x))
+                        : p.slope == 1 ? std::exp(-1.5f * x * x)
+                                       : 1.0f / (1.0f + std::exp(-4.0f * x));
+            shape += p.reso * 6.0f * std::exp(-x * x * 4.0f);   // Reso: the bands round the cutoff stand out
+            const float tilt = std::exp2(p.fTone * 0.5f * std::log2(f / 1000.0f));   // Tone: +-3 dB an octave
+            const float ring = std::fmin(12.0f, std::sqrt(q / qWide));   // narrow bands catch less: make up for it
+            bandTarget_[b] = 0.6f * shape * tilt * ring;
+        }
+        for (int b = nBands_; b < kBands; ++b) bandTarget_[b] = 0.0f;
         fTiltA_ = onePoleA(700.0f, sr_);
     }
 
     float filterTick(float x, const TrackParams& p)
     {
-        float y = x, lp, bp;
-        for (int s = 0; s < stages_; ++s) { lp_[s].tick(y, lp, bp); y = lp; }
-        if (p.reso > 0.001f)
+        float y = 0.0f, lp, bp;
+        for (int b = 0; b < nBands_; ++b)
         {
-            float rs = 0.0f;
-            for (int k = 0; k < 4; ++k) { res_[k].tick(x, lp, bp); rs += bp * resK_[k]; }
-            y += rs * p.reso * 2.5f;
+            bandW_[b] += 0.004f * (bandTarget_[b] - bandW_[b]);   // glide band levels: no zipper noise
+            band_[b].tick(x, lp, bp);
+            y += bp * bandK_[b] * bandW_[b];
         }
-        if (std::fabs(p.fTone) > 0.001f)
-        {
-            fTiltLp_ += fTiltA_ * (y - fTiltLp_);
-            const float hp = y - fTiltLp_;
-            y = fTiltLp_ * (1.0f - 0.7f * p.fTone) + hp * (1.0f + 0.7f * p.fTone);
-        }
+        y = std::tanh(y);   // ringing bands can pile up: keep them in bounds, warmly
         return x + p.fWet * (y - x);
     }
 
@@ -1278,9 +1305,10 @@ private:
     Grain grains_[kMaxGrains];
 
     // filter
-    Svf lp_[4], res_[4];
-    float resK_[4] = {1, 1, 1, 1};
-    int stages_ = 2;
+    static constexpr int kBands = 32;
+    Svf band_[kBands];
+    float bandK_[kBands] = {}, bandW_[kBands] = {}, bandTarget_[kBands] = {};
+    int nBands_ = 0;
     float fTiltLp_ = 0.0f, fTiltA_ = 0.1f;
 
     // color

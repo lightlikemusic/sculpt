@@ -15,13 +15,12 @@ picture that changes as you turn those knobs.
 
 ## Playing it
 
-- **Pads and keys play the track you last touched** on its tab (its page keys, knobs, ON and toggle
-  keys, or browser), chromatically up and down from note 24 (C0, pad A01 in the MPC's usual pad
-  layout), which plays the loop at its recorded pitch. (The MPC does not tell a plugin which tab is
-  on screen, so just switching tabs does not change it.)
+- **Pads and keys play the picked track** (track keys 1–4 on the screen), chromatically up and
+  down from note 24 (C0, pad A01 in the MPC's usual pad layout), which plays the loop at its
+  recorded pitch.
 - **MIDI channels 2–5 always play tracks 1–4**, so a sequence can play each track on its own
-  channel. Channel 1 (and 6–16) plays the track you last touched.
-- **To loop a track in time without holding a pad,** turn on **SYNC** (on the track's Source page)
+  channel. Channel 1 (and 6–16) plays the picked track.
+- **To loop a track in time without holding a pad,** turn on **SYNC** (on the Source page, with the track picked)
   and press Play on the MPC. The track runs with the transport, locked to the beat.
 - Pitch bend is ±2 semitones on every track.
 - With **Loop** set to Off, a note plays its region once and ignores note-off (one-shot). In
@@ -29,28 +28,34 @@ picture that changes as you turn those knobs.
 
 ## The screen
 
-The function keys under the screen are **TRACK 1, TRACK 2, TRACK 3, TRACK 4 and MIX**. Each track
-tab shows one module page at a time, and remembers which.
+The function keys under the screen are **SCULPT** and **MIX**. SCULPT shows one module page at a
+time for the picked track. The row of keys along the bottom:
 
-- **Module keys** (bottom right, five): pick the page: Source, Grain, Filter, Color or Space. The lit
-  key is the page you're on.
-- **ON / OFF** (bottom left): turns the page's module on or off for this track.
+- **Track keys 1–4** (left): pick the track. Everything on screen follows it: the cells, the
+  Q-Links, the pictures, the browser and the pads.
+- **ON / OFF** (middle): turns the page's module on or off for the picked track.
 - **SYNC / LOCK / FREEZE** (next to it): the page's own toggle: Sync on Source, Lock on Grain,
   Freeze on Space. Filter and Color have none.
+- **Module keys** (right, five): pick the page: Source, Grain, Filter, Color or Space. The lit key
+  is the page you're on.
+
+Above them:
+
 - **Cells**: the page's settings. Drag a cell, or touch it and turn the Q-Links. Double-tap a
   cell for the big knob.
-- **Q-Links**: each track has 12 knobs that follow the page on screen: cells 1–4, 5–8 and 9–12 (on
-  Space, the Chorus, Delay and Reverb columns). On Source, knobs 9 and 10 browse folders and files.
-- **Pictures**: each track's tab has its own waveform, Grain pixels, Filter spectrum, playhead and
-  loop markers. A track's pictures move while its tab is on the page that shows them.
-- **BROWSE** opens the list for that tab's track.
+- **Q-Links**: 12 knobs that follow the page on screen: cells 1–4, 5–8 and 9–12 (on Space, the
+  Chorus, Delay and Reverb columns). On Source, knobs 9 and 10 browse folders and files.
+- **Pictures**: the picked track's waveform, Grain pixels, Filter spectrum, playhead and loop
+  markers. They move while their page is on screen.
+- **BROWSE** opens the list for the picked track.
 
 To automate a track, use its own parameters (`T1 Cutoff`, `T2 Drive` and so on). The knob
-parameters (`T1 Knob 1`...) follow whatever page is showing, so they are not for automation.
+parameters (`T1 Knob 1`...) follow whatever page and track are showing, so they are not for
+automation.
 
 ## Mixing
 
-The sixth function key opens **MIX**: one strip per track and a master strip.
+The second function key opens **MIX**: one strip per track and a master strip.
 
 - **Meter and fader:** each strip has a level meter and a volume fader on the same dB scale
   (+6 to −60). 0 dB sits at the same height on both, and the fader's bottom is silent (−inf).

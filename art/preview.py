@@ -196,7 +196,7 @@ def main():
     full = Image.new("RGB", (1280, 800), (22, 24, 29))
     full.paste(r.img.convert("RGB"), (0, 110))
     dr = ImageDraw.Draw(full)
-    tabs = ["SOURCE", "GRAIN", "FILTER", "COLOR", "SPACE"]
+    tabs = ["SCULPT", "MIX"]
     for i, n in enumerate(tabs):
         x0 = i * 1280 // 6
         if i == t["fnKeyIndex"]:

@@ -161,29 +161,7 @@ constexpr int kPage0 = kSpecEnd;                          // 947..950
 constexpr int kKnob0 = kPage0 + kNumTracks;               // 951..998
 constexpr int kTabEnd = kKnob0 + kNumTracks * kKnobs;     // 999
 inline int knobIdx(int t, int i) { return kKnob0 + t * kKnobs + i; }
-// Per-track pictures, so each track's tab always shows its own track (the MPC asks for every tab's
-// values, so the plugin cannot tell which tab is on screen). Track 1 keeps the original slots;
-// tracks 2-4 get these. Plus a BROWSE (list open) per track.
-constexpr int kBrowseOpen0 = kTabEnd;                          // 999..1002
-constexpr int kWaveT0 = kBrowseOpen0 + kNumTracks;             // 1003..1386: waveform, tracks 2-4
-constexpr int kPixT0 = kWaveT0 + 3 * kWaveCols;                // 1387..1770: Grain pixels, tracks 2-4
-constexpr int kSpecInT0 = kPixT0 + 3 * kPixCols;               // 1771..1962: spectrum in, tracks 2-4
-constexpr int kSpecOutT0 = kSpecInT0 + 3 * kSpecBands;         // 1963..2154: spectrum out, tracks 2-4
-constexpr int kMarkT0 = kSpecOutT0 + 3 * kSpecBands;           // 2155..2163: playhead, loop end, rotate at, tracks 2-4
-constexpr int kAllEnd = kMarkT0 + 3 * 3;                       // 2164
-inline int waveIdx(int t, int c) { return t == 0 ? kWave0 + c : kWaveT0 + (t - 1) * kWaveCols + c; }
-inline int pixIdx(int t, int c) { return t == 0 ? kGrainPix0 + c : kPixT0 + (t - 1) * kPixCols + c; }
-inline int specIdx(int t, int which, int b)
-{
-    if (t == 0) return (which == 0 ? kSpecIn0 : kSpecOut0) + b;
-    return (which == 0 ? kSpecInT0 : kSpecOutT0) + (t - 1) * kSpecBands + b;
-}
-inline int markIdx(int t, int k)   // 0 playhead, 1 loop end, 2 rotate at
-{
-    if (t == 0) return k == 0 ? kPlayhead : (k == 1 ? kLoopEnd : kRotateAt);
-    return kMarkT0 + (t - 1) * 3 + k;
-}
-inline bool isDisplayIndex(int i) { return (i >= kGrainCol0 && i < kSpecEnd) || (i >= kWaveT0 && i < kAllEnd); }
+inline bool isDisplayIndex(int i) { return i >= kGrainCol0 && i < kSpecEnd; }
 constexpr float kMixMinDb = -60.0f, kMixMaxDb = 6.0f;      // faders and meters share this scale
 // View setting `v` (0..56): its parameter index, and the parameter it mirrors on track `t`.
 inline int viewParam(int v)
@@ -241,7 +219,6 @@ inline int cellTarget(int t, int m, int k)
 }
 
 // Set on threads whose value formatting must not count as "the MPC is drawing this" (the debug log).
-thread_local bool tlQuietFormat = false;
 
 const char* const kSampleFiles[4] = {"Samples/1 Kalimba.wav", "Samples/2 Tape.wav",
                                      "Samples/3 Choir.wav", "Samples/4 Glass.wav"};
@@ -274,7 +251,7 @@ public:
         // the waveform columns start out showing track 1's loop, so a project saved before any audio
         // has run already holds the right picture
         for (int t = 0; t < kNumTracks; ++t)   // each track's waveform starts as its built-in loop
-            for (int c = 0; c < kWaveCols; ++c) setNormalised(waveIdx(t, c), samples_[mpc::clamp(getInt(idx(t, pSample)), 0, 3)].peaks[c]);
+            if (t == 0) for (int c = 0; c < kWaveCols; ++c) setNormalised(kWave0 + c, samples_[mpc::clamp(getInt(idx(t, pSample)), 0, 3)].peaks[c]);
         scanner_.start();            // find WAV files on the drives in the background
         loader_.start(&scanner_);
         hostSets_ = std::vector<std::atomic<uint32_t>>((size_t)numParams());
@@ -302,7 +279,6 @@ public:
     {
         // after a load the settings are what counts: the knobs re-read them on the next block
         for (int t = 0; t < kNumTracks; ++t) lastPage_[t] = -1;
-        justLoaded_ = true;
         for (sculpt::Track& tr : tracks_) tr.reset();
         for (bool& b : playHeld_) b = false;
         for (int t = 0; t < kNumTracks; ++t)
@@ -338,13 +314,6 @@ public:
         float* outR = ctx.numOutputs > 1 ? ctx.outputs[1] : ctx.outputs[0];
 
         syncKnobs();   // knobs first, so a knob's change reaches its setting and the view in the same block
-        noticeTouches();
-        if (askMask_.load(std::memory_order_relaxed) != 0 && askBlock_.load(std::memory_order_relaxed) + 2 < blocks_.load(std::memory_order_relaxed))
-            fileAskMoment();
-        {   // a tab that came on screen is the track the pads play (until you touch another)
-            const int v = visibleTrack_.load(std::memory_order_relaxed);
-            if (v != lastVisible_) { lastVisible_ = v; if (v >= 0) touchedTrack_ = v; }
-        }
         syncView();
         for (int t = 0; t < kNumTracks; ++t) readTrack(t, tp_[t]);
         setupMix();
@@ -412,8 +381,8 @@ public:
         if (index >= kKnob0 && index < kTabEnd)
         {   // a knob reads like the setting it stands for; and the MPC only asks for the tab it shows
             const int t = (index - kKnob0) / kKnobs, k = (index - kKnob0) % kKnobs;
-            if (!tlQuietFormat) noteKnobAsk(t);
-            const int target = cellTarget(t, mpc::clamp(getInt(kPage0 + t), 0, kModules - 1), k);
+            if (t != 0) { out = ""; return true; }   // only the first 12 knobs are used: the screen's
+            const int target = cellTarget(screenTrack(), mpc::clamp(getInt(kPage0), 0, kModules - 1), k);
             if (target < 0) { out = ""; return true; }
             const float tp = param(target).toPlain(plain);
             if (!formatValue(target, tp, out)) out = param(target).display(tp);
@@ -426,6 +395,22 @@ public:
             {
                 out = mpc::dsp::divisionName(grainDivision(param(index).toNormalised(plain)));
                 return true;
+            }
+            // Length in SYNC: beat steps, shown as note values and bars
+            if (index == idx(t, pLength) && getBool(idx(t, pSync)))
+            {
+                const sculpt::Sample* smp = active_[t] ? active_[t] : &samples_[mpc::clamp(getInt(idx(t, pSample)), 0, 3)];
+                if (smp && smp->size() >= 64)
+                {
+                    const double sb = sculpt::Track::sampleBeats(*smp);
+                    const double k = std::round(mpc::clamp(plain / 100.0f, 0.0f, 1.0f) * std::log2(sb * 16.0));
+                    const double beats = std::fmin(sb, std::pow(2.0, k) / 16.0);
+                    char b[24];
+                    if (beats >= 4.0) std::snprintf(b, sizeof b, beats >= 8.0 ? "%.0f bars" : "%.0f bar", beats / 4.0);
+                    else std::snprintf(b, sizeof b, "1/%.0f", 4.0 / beats);
+                    out = b;
+                    return true;
+                }
             }
             if (index == midx(t, mVolume) && plain <= kMixMinDb + 0.05f) { out = "-inf dB"; return true; }
             if (index == kVolume && plain <= kMixMinDb + 0.05f) { out = "-inf dB"; return true; }
@@ -582,7 +567,6 @@ private:
     void addViewParams()
     {
         mpc::Param e = mpc::choiceParam("edit_track", "Edit Track", {"1", "2", "3", "4"}, 0);
-        e.automatable = false;   // internal since the track tabs (see screenTrack)
         addParam(e);
         // The screen shows these names in its boxes, so they match the box captions exactly.
         static const char* const kScreenNames[kPerTrack] = {
@@ -597,7 +581,6 @@ private:
             mpc::Param p = param(viewTarget(0, v));   // same kind, range and default as track 1's
             p.id = "view_" + p.id.substr(3);           // "t1_cutoff" -> "view_cutoff"
             p.name = v < kPerTrack ? kScreenNames[v] : p.name.substr(3);   // "T1 Root" -> "Root"
-            p.automatable = false;   // the view only follows the selected track now; the screen uses the tracks
             addParam(p);
         };
         for (int v = 0; v < kPerTrack + bCount; ++v) addView(v);
@@ -645,7 +628,7 @@ private:
             addParam(floatParam(("t" + std::to_string(t + 1) + "_start").c_str(), ("T" + std::to_string(t + 1) + " Start").c_str(), 0.0f, 100.0f, 0.0f, "%", 0));
         {
             Param v = param(kStartBase);
-            v.id = "view_start"; v.name = "Start"; v.automatable = false; addParam(v);
+            v.id = "view_start"; v.name = "Start"; addParam(v);
         }
         Param le = floatParam("loop_end", "Loop End", 0.0f, 1.0f, 1.0f, "", 3);
         le.automatable = false;
@@ -671,7 +654,7 @@ private:
             std::vector<Param> ps;
             chorusParams("view_", "", ps);
             const char* caption[cCount] = {"Amount", "Rate", "Depth", "Width"};   // the boxes' captions
-            for (int c = 0; c < cCount; ++c) { ps[(size_t)c].name = caption[c]; ps[(size_t)c].automatable = false; addParam(ps[(size_t)c]); }
+            for (int c = 0; c < cCount; ++c) { ps[(size_t)c].name = caption[c]; addParam(ps[(size_t)c]); }
         }
         // reverb Mix per track (0 = dry only, 50 = both at full level, 100 = reverb only), then the view's
         for (int t = 0; t < kNumTracks; ++t)
@@ -679,7 +662,6 @@ private:
                                 0.0f, 100.0f, 20.0f, "%", 0));
         {
             Param q = floatParam("view_rev_mix", "Mix", 0.0f, 100.0f, 20.0f, "%", 0);
-            q.automatable = false;
             addParam(q);
         }
         // reverb Type per track, then the view's (the screen's TYPE box)
@@ -688,7 +670,6 @@ private:
             addParam(mpc::choiceParam(("t" + std::to_string(t + 1) + "_rev_type").c_str(), ("T" + std::to_string(t + 1) + " Rev Type").c_str(), types, 0));
         {
             Param q = mpc::choiceParam("view_rev_type", "Type", types, 0);
-            q.automatable = false;
             addParam(q);
         }
         // the Grain screen (written by the plugin; not for automation)
@@ -715,24 +696,6 @@ private:
                                      ("T" + std::to_string(t + 1) + " Knob " + std::to_string(k + 1)).c_str(), 0.0f, 1.0f, 0.0f, "", 3);
                 addParam(q);
             }
-        for (int t = 0; t < kNumTracks; ++t)
-            addParam(boolParam(("t" + std::to_string(t + 1) + "_browse").c_str(), ("T" + std::to_string(t + 1) + " Browse").c_str(), false));
-        // per-track pictures for tracks 2-4 (written by the plugin)
-        for (int t = 1; t < kNumTracks; ++t)
-            for (int c = 0; c < kWaveCols; ++c) display("t" + std::to_string(t + 1) + "_wave" + std::to_string(c + 1), "T" + std::to_string(t + 1) + " Wave " + std::to_string(c + 1), 0.0f);
-        for (int t = 1; t < kNumTracks; ++t)
-            for (int c = 0; c < kPixCols; ++c) display("t" + std::to_string(t + 1) + "_pix" + std::to_string(c + 1), "T" + std::to_string(t + 1) + " Pixels " + std::to_string(c + 1), 0.0f);
-        for (int w = 0; w < 2; ++w)
-            for (int t = 1; t < kNumTracks; ++t)
-                for (int b = 0; b < kSpecBands; ++b)
-                    display("t" + std::to_string(t + 1) + (w ? "_spec_out" : "_spec_in") + std::to_string(b + 1),
-                            "T" + std::to_string(t + 1) + (w ? " Filter Out " : " Filter In ") + std::to_string(b + 1), 0.0f);
-        for (int t = 1; t < kNumTracks; ++t)
-        {
-            display("t" + std::to_string(t + 1) + "_playhead", "T" + std::to_string(t + 1) + " Playhead", 0.0f);
-            display("t" + std::to_string(t + 1) + "_loop_end", "T" + std::to_string(t + 1) + " Loop End", 1.0f);
-            display("t" + std::to_string(t + 1) + "_rotate_at", "T" + std::to_string(t + 1) + " Rotate At", 0.0f);
-        }
     }
 
     // The mix gains for this block: volume, pan (balance), mute, and solo across the tracks.
@@ -774,33 +737,24 @@ private:
             }
         }
         if (send)
-        {   // Each track's pictures, only while its tab is on the page that shows them.
+        {   // The picked track's pictures, only while its page is on screen.
             ++grainTick_;
-            for (int t = 0; t < kNumTracks; ++t)
-            {
-                const int page = mpc::clamp(getInt(kPage0 + t), 0, kModules - 1);
-                if (page == 0)
-                {   // the playhead line on the Source waveform: 0 hides it, otherwise 0.001..1
-                    const double pos = tracks_[t].playPosition();
-                    const float v = pos < 0.0 ? 0.0f : 0.001f + 0.999f * (float)pos;
-                    const int ph = markIdx(t, 0);
-                    if (v != getNormalised(ph) && (v == 0.0f || std::fabs(v - getNormalised(ph)) >= 0.0005f))
-                    {
-                        setNormalised(ph, v);
-                        notifyLater(ph);
-                    }
-                    publishMarkers(t);
+            const int et = screenTrack(), page = mpc::clamp(getInt(kPage0), 0, kModules - 1);
+            if (page == 0)
+            {   // the playhead line on the Source waveform: 0 hides it, otherwise 0.001..1
+                const double pos = tracks_[et].playPosition();
+                const float v = pos < 0.0 ? 0.0f : 0.001f + 0.999f * (float)pos;
+                if (v != getNormalised(kPlayhead) && (v == 0.0f || std::fabs(v - getNormalised(kPlayhead)) >= 0.0005f))
+                {
+                    setNormalised(kPlayhead, v);
+                    notifyLater(kPlayhead);
                 }
-                if (page == 1 && (grainTick_ % 3 == 0 || pixPage_[t] != 1)) publishPixels(t);   // ~10 a second
-                pixPage_[t] = page;
+                publishMarkers(et);
             }
-            // the Filter spectrum: tracks on their Filter page take turns, in and out alternating
-            for (int n = 0; n < kNumTracks; ++n)
-            {
-                specTurn_ = (specTurn_ + 1) % (2 * kNumTracks);
-                const int t = specTurn_ / 2;
-                if (getInt(kPage0 + t) == 2) { publishSpectrum(t, specTurn_ & 1); break; }
-            }
+            const int pixKey = et * kModules + page;
+            if (page == 1 && (grainTick_ % 3 == 0 || pixPage_[0] != pixKey)) publishPixels(et);   // ~10 a second
+            pixPage_[0] = pixKey;
+            if (page == 2) publishSpectrum(et, grainTick_ & 1);   // in and out alternate: each ~15 a second
         }
     }
 
@@ -877,7 +831,7 @@ private:
             const int h = mpc::clamp((int)std::lround(src->peaks[c] * (kPixHeights - 1)), 0, kPixHeights - 1);
             const int d = marked == 0 ? 0 : mpc::clamp((dist[c] + 3) / 4, 0, kPixDissolve - 1);
             const float v = (float)(h * kPixDissolve + d) / (float)(kPixHeights * kPixDissolve - 1);
-            const int index = pixIdx(t, c);
+            const int index = kGrainPix0 + c;
             if (std::fabs(v - getNormalised(index)) >= step)
             {
                 setNormalised(index, v);
@@ -914,7 +868,7 @@ private:
                 const float v = mpc::clamp((db + 66.0f) / 42.0f, 0.0f, 1.0f);   // -66 dB = empty, -24 dB = full height
                 float& held = specHeld_[et][which][b];
                 held = std::fmax(v, held - 0.045f);
-                const int index = specIdx(et, which, b);
+                const int index = (which == 0 ? kSpecIn0 : kSpecOut0) + b;
                 if (std::fabs(held - getNormalised(index)) >= 0.012f || (held == 0.0f) != (getNormalised(index) == 0.0f))
                 {
                     setNormalised(index, held);
@@ -959,7 +913,7 @@ private:
         const float rot = get(idx(et, pRotate)) * 0.01f;
         const float at = rot <= 0.0f ? 0.0f : std::fmax(0.001f, start + rot * (end - start));
         const float vals[2] = {end, at};
-        const int ids[2] = {markIdx(et, 1), markIdx(et, 2)};
+        const int ids[2] = {kLoopEnd, kRotateAt};
         for (int k = 0; k < 2; ++k)
             if (std::fabs(vals[k] - getNormalised(ids[k])) >= 0.0005f || (vals[k] == 0.0f) != (getNormalised(ids[k]) == 0.0f))
             {
@@ -968,94 +922,39 @@ private:
             }
     }
 
-    // The pictures (waveform, Grain, Filter, markers), the browser list and channel-1 pads follow
-    // one track: the track tab on screen (the MPC only asks for the text of the tab it shows).
-    // Plugin state, not a saved setting. Until a tab has been shown, the old Edit Track decides.
-    int screenTrack() const
-    {   // the last track you touched on its tab (page keys, knobs, ON and toggle keys, browser);
-        // until then the old Edit Track. Pads on MIDI channel 1 play it.
-        const int t = touchedTrack_;
-        return t >= 0 && t < kNumTracks ? t : mpc::clamp(getInt(kEditTrack), 0, kNumTracks - 1);
-    }
-    int listTrack() const { return listTrack_ >= 0 ? listTrack_ : screenTrack(); }
+    // The screen, its pictures, the Q-Links, the browser list and channel-1 pads all follow the
+    // track the track keys pick (Edit Track).
+    int screenTrack() const { return mpc::clamp(getInt(kEditTrack), 0, kNumTracks - 1); }
+    int listTrack() const { return screenTrack(); }
 
-    // Which tab is on screen? About once a second the MPC asks for the text of every track's
-    // knobs at once (all four tracks in one moment); a tab appearing asks only for its own track.
-    // So each "moment" of requests (one audio block) is summed up as which tracks it named, and a
-    // moment that named exactly one track says that track's tab is on screen. (Any thread.)
-    void noteKnobAsk(int t)
-    {
-        const uint64_t blk = blocks_.load(std::memory_order_relaxed);
-        if (askBlock_.load(std::memory_order_relaxed) != blk)
-        {   // a new moment: file the last one (the audio thread also files it if nothing follows)
-            fileAskMoment();
-            askMask_.store(0, std::memory_order_relaxed); askCount_.store(0, std::memory_order_relaxed);
-            askBlock_.store(blk, std::memory_order_relaxed);
-        }
-        askMask_.fetch_or(1u << t, std::memory_order_relaxed);
-        askCount_.fetch_add(1, std::memory_order_relaxed);
-    }
-    void fileAskMoment()
-    {
-        const uint32_t mask = askMask_.exchange(0, std::memory_order_relaxed);
-        const uint32_t count = askCount_.exchange(0, std::memory_order_relaxed);
-        if (mask == 0) return;
-        const uint32_t n = knobAskCount_.fetch_add(1, std::memory_order_relaxed);
-        knobAsk_[n % kKnobAskLog].index.store((int)(mask | (count << 8)), std::memory_order_relaxed);
-        knobAsk_[n % kKnobAskLog].block.store(askBlock_.load(std::memory_order_relaxed), std::memory_order_relaxed);
-        if ((mask & (mask - 1)) == 0)   // exactly one track: its tab is on screen
-            for (int t = 0; t < kNumTracks; ++t) if (mask == (1u << t)) visibleTrack_.store(t, std::memory_order_relaxed);
-    }
-
-    // Which track did you just touch? A change to its page, ON/toggle keys or BROWSE counts (the
-    // knobs count in syncKnobs). Not right after a load, when everything changes at once.
-    void noticeTouches()
-    {
-        for (int t = 0; t < kNumTracks; ++t)
-        {
-            uint32_t sig = (uint32_t)getInt(kPage0 + t);
-            for (int b = pSrcOn; b <= pFreeze; ++b) sig = sig * 2u + (getBool(idx(t, b)) ? 1u : 0u);
-            const bool open = getBool(kBrowseOpen0 + t);
-            sig = sig * 2u + (open ? 1u : 0u);
-            if (touchSig_[t] != sig && !justLoaded_) touchedTrack_ = t;
-            if (open && !lastOpen_[t]) listTrack_ = t;   // the list shows the track whose BROWSE you opened
-            lastOpen_[t] = open;
-            touchSig_[t] = sig;
-        }
-        justLoaded_ = false;
-    }
-
-    // Track tabs: each track's 12 knobs stand for the cells on the page its tab shows. When the
-    // page changes they take the new cells' values; after that a knob moving moves its setting,
-    // and a setting moving (automation, presets, the browser) moves its knob.
+    // The 12 Q-Link knobs (track 1's set) stand for the cells of the page on screen, for the picked
+    // track. When the page or the track changes they take the new cells' values; after that a knob
+    // moving moves its setting, and a setting moving (the view, automation, presets) moves its knob.
     void syncKnobs()
     {
-        for (int t = 0; t < kNumTracks; ++t)
+        const int et = screenTrack(), page = mpc::clamp(getInt(kPage0), 0, kModules - 1);
+        const int key = et * kModules + page;
+        const bool newPage = key != lastPage_[0];
+        lastPage_[0] = key;
+        for (int k = 0; k < kKnobs; ++k)
         {
-            const int page = mpc::clamp(getInt(kPage0 + t), 0, kModules - 1);
-            const bool newPage = page != lastPage_[t];
-            lastPage_[t] = page;
-            for (int k = 0; k < kKnobs; ++k)
+            const int knob = knobIdx(0, k), target = cellTarget(et, page, k);
+            const float kv = getNormalised(knob), tv = target >= 0 ? getNormalised(target) : 0.0f;
+            if (target < 0) { lastKnob_[0][k] = kv; continue; }   // nothing behind this knob on this page
+            if (newPage)
             {
-                const int knob = knobIdx(t, k), target = cellTarget(t, page, k);
-                const float kv = getNormalised(knob), tv = target >= 0 ? getNormalised(target) : 0.0f;
-                if (target < 0) { lastKnob_[t][k] = kv; continue; }   // nothing behind this knob on this page
-                if (newPage)
-                {
-                    setNormalised(knob, tv); notifyLater(knob);
-                    lastKnob_[t][k] = lastKnobTarget_[t][k] = tv;
-                }
-                else if (kv != lastKnob_[t][k])
-                {   // turned on the screen or a Q-Link: move the setting (and this tab is the one on screen)
-                    if (target >= 0) { setNormalised(target, kv); notifyLater(target); }
-                    lastKnob_[t][k] = lastKnobTarget_[t][k] = kv;
-                    if (!justLoaded_) touchedTrack_ = t;
-                }
-                else if (target >= 0 && tv != lastKnobTarget_[t][k])
-                {
-                    setNormalised(knob, tv); notifyLater(knob);
-                    lastKnob_[t][k] = lastKnobTarget_[t][k] = tv;
-                }
+                setNormalised(knob, tv); notifyLater(knob);
+                lastKnob_[0][k] = lastKnobTarget_[0][k] = tv;
+            }
+            else if (kv != lastKnob_[0][k])
+            {   // turned on the screen or a Q-Link: move the setting
+                setNormalised(target, kv); notifyLater(target);
+                lastKnob_[0][k] = lastKnobTarget_[0][k] = kv;
+            }
+            else if (tv != lastKnobTarget_[0][k])
+            {
+                setNormalised(knob, tv); notifyLater(knob);
+                lastKnob_[0][k] = lastKnobTarget_[0][k] = tv;
             }
         }
     }
@@ -1063,23 +962,37 @@ private:
     // Copy between the view and the track being edited. Audio thread, once per block.
     void syncView()
     {
-        // The view only follows the selected track (track -> view). Since the track tabs, the screen
-        // binds to each track's own settings, so nothing writes through the view any more: a view
-        // value that disagrees after a load can never overwrite a track's setting.
-        const int et = mpc::clamp(getInt(kEditTrack), 0, kNumTracks - 1);   // a saved setting, so loads stay exact
-        const bool newEdit = et != lastEdit_;
-        lastEdit_ = et;
+        const int et = screenTrack();
+        if (et != lastEdit_)
+        {   // another track picked: the view shows it
+            lastEdit_ = et;
+            for (int v = 0; v < kNumView; ++v)
+            {
+                const float tn = getNormalised(viewTarget(et, v));
+                setNormalised(viewParam(v), tn);
+                notifyLater(viewParam(v));
+                lastView_[v] = tn; lastTarget_[v] = tn;
+            }
+            return;
+        }
         for (int v = 0; v < kNumView; ++v)
         {
-            const float tn = getNormalised(viewTarget(et, v));
-            if (newEdit || tn != getNormalised(viewParam(v)))
-            {
-                setNormalised(viewParam(v), tn);
-                if (newEdit || tn != lastTarget_[v]) notifyLater(viewParam(v));
+            const int target = viewTarget(et, v);
+            const float vn = getNormalised(viewParam(v)), tn = getNormalised(target);
+            if (vn != lastView_[v])
+            {   // pressed or turned on the screen (ON / toggle / browser): change the track
+                setNormalised(target, vn);
+                lastView_[v] = vn; lastTarget_[v] = vn;
             }
-            lastView_[v] = lastTarget_[v] = tn;
+            else if (tn != lastTarget_[v])
+            {   // the track changed some other way (a knob, automation, a preset, the browser): show it
+                setNormalised(viewParam(v), tn);
+                notifyLater(viewParam(v));
+                lastView_[v] = tn; lastTarget_[v] = tn;
+            }
         }
     }
+
 
 
     // Browser keys, loads finishing, and going back to the built-in loop. Audio thread, once per block.
@@ -1255,21 +1168,19 @@ private:
     // The screen's waveform follows the edited track's sound: rewrite the 128 columns whenever that
     // sound changes (a file loaded, a built-in loop picked) or another track is picked.
     void publishWave()
-    {   // each track's waveform, rewritten when its sound changes
-        for (int t = 0; t < kNumTracks; ++t)
-        {
-            const sculpt::Sample* src = active_[t] ? active_[t] : &samples_[mpc::clamp(tp_[t].sample, 0, 3)];
-            const bool fresh = src->id != waveIds_[t];
-            waveIds_[t] = src->id;
-            for (int c = 0; c < kWaveCols; ++c)
-            {   // also puts back any column something else wrote to
-                const int index = waveIdx(t, c);
-                if (!fresh && getNormalised(index) == src->peaks[c]) continue;
-                setNormalised(index, src->peaks[c]);
-                notifyLater(index);
-            }
+    {   // the picked track's waveform, rewritten when its sound changes or another track is picked
+        const int t = screenTrack();
+        const sculpt::Sample* src = active_[t] ? active_[t] : &samples_[mpc::clamp(tp_[t].sample, 0, 3)];
+        const bool fresh = src->id != waveIds_[0];
+        waveIds_[0] = src->id;
+        for (int c = 0; c < kWaveCols; ++c)
+        {   // also puts back any column something else wrote to
+            if (!fresh && getNormalised(kWave0 + c) == src->peaks[c]) continue;
+            setNormalised(kWave0 + c, src->peaks[c]);
+            notifyLater(kWave0 + c);
         }
     }
+
 
     static std::string fit(const std::string& s, int max = kMaxText)
     {
@@ -1366,12 +1277,12 @@ private:
         F("gfeedback","G Feedback", 0.0f, 95.0f, 20.0f, "%", 0);    // the grains fed back into the recording
         C("gmode",   "G Mode", {"Collage", "Cloud", "Stutter", "Shimmer", "Shatter", "Arpeggio", "Cascade"}, 1);
         F("gwet",    "G Wet",     0.0f, 100.0f, 60.0f, "%", 0);
-        // Filter: lowpass plus four resonators tuned to a scale near the cutoff
+        // Filter: a bank of resonant bands tuned to a scale, shaped by cutoff, slope, reso and tone
         L("cutoff",  "Cutoff",  20.0f, 20000.0f, 9000.0f, "Hz", 0);
         F("reso",    "Reso",    0.0f, 100.0f, 35.0f, "%", 0);
-        L("fdecay",  "F Decay", 20.0f, 4000.0f, 300.0f, "ms", 0);   // resonator ring time
-        I("fpitch",  "F Pitch", -12, 12, 0, "st");                  // root of the resonator chord (0 = C)
-        C("slope",   "Slope",   {"12 dB", "24 dB", "48 dB"}, 1);
+        L("fdecay",  "F Decay", 20.0f, 4000.0f, 300.0f, "ms", 0);   // how long the bands ring
+        I("fpitch",  "F Pitch", -24, 24, 0, "st");                  // moves every band (0 = the scale on C)
+        C("slope",   "Slope",   {"Low", "Band", "High"}, 0);
         F("ftone",   "F Tone",  -100.0f, 100.0f, 0.0f, "%", 0);
         C("scale",   "Scale",   {"Chrom", "Major", "Minor", "Penta"}, 3);
         F("fwet",    "F Wet",   0.0f, 100.0f, 100.0f, "%", 0);
@@ -1541,7 +1452,7 @@ private:
             {2, pCutoff, 4000}, {2, pReso, 40}, {2, pScale, 2}});
         addPreset("Pentatonic Rain", {
             {0, pGrainOn, 1}, {0, pGMode, 5}, {0, pGDensity, 55}, {0, pGSize, 60}, {0, pGSpread, 60}, {0, pGWet, 50},
-            {0, pReso, 80}, {0, pFDecay, 1500}, {0, pCutoff, 2200}, {0, pScale, 3}, {0, pSlope, 2},
+            {0, pReso, 80}, {0, pFDecay, 1500}, {0, pCutoff, 2200}, {0, pScale, 3}, {0, pSlope, 0},
             {0, pDelay, 45}, {0, pFeedback, 60}, {0, pSpread, 100}, {0, pTime, 250}});
         addPreset("Night Bus", {
             {1, pSpeed, 0.5f}, {1, pColorOn, 1}, {1, pDrive, 40}, {1, pTilt, -50}, {1, pCrush, 20},
@@ -1586,7 +1497,6 @@ private:
 
     void debugLoop()
     {
-        tlQuietFormat = true;   // the log formats values too; that must not move the shown track
         std::string last;
         int tick = 0;
         while (!debugStop_)
@@ -1596,23 +1506,10 @@ private:
             std::string s;
             char b[256];
             const sculpt::Library* lib = scanner_.library();
-            std::snprintf(b, sizeof b, "Sculpt debug  audio blocks seen: %s\nlibrary: %s (%d folders)\nTrack on screen = %d (pictures, channel-1 pads)\npages: %d %d %d %d\n",
+            std::snprintf(b, sizeof b, "Sculpt debug  audio blocks seen: %s\nlibrary: %s (%d folders)\nTrack on screen = %d (pictures, channel-1 pads)\npage: %d\n",
                           blocks_.load() ? "yes" : "NO", lib ? "ready" : "scanning", lib ? (int)lib->folders.size() : 0,
-                          screenTrack() + 1, getInt(kPage0) + 1, getInt(kPage0 + 1) + 1, getInt(kPage0 + 2) + 1, getInt(kPage0 + 3) + 1);
+                          screenTrack() + 1, getInt(kPage0) + 1);
             s += b;
-            {   // the last moments the MPC asked for knob texts: which tracks, how many requests
-                const uint32_t n = knobAskCount_.load(std::memory_order_relaxed);
-                std::snprintf(b, sizeof b, "knob text moments (oldest first; now at block %llu; tab seen %d; pads play %d):\n",
-                              (unsigned long long)blocks_.load(), visibleTrack_.load() + 1, screenTrack() + 1);
-                s += b;
-                for (uint32_t k = n > (uint32_t)kKnobAskLog ? n - kKnobAskLog : 0; k < n; ++k)
-                {
-                    const int v = knobAsk_[k % kKnobAskLog].index.load(std::memory_order_relaxed);
-                    std::snprintf(b, sizeof b, "  block %llu: tracks %s%s%s%s, %d requests\n", (unsigned long long)knobAsk_[k % kKnobAskLog].block.load(),
-                                  (v & 1) ? "1" : "", (v & 2) ? "2" : "", (v & 4) ? "3" : "", (v & 8) ? "4" : "", v >> 8);
-                    s += b;
-                }
-            }
             {
                 const int tf = lastTransport_.load();
                 std::snprintf(b, sizeof b, "transport: playing=%d songpos(ppq) valid=%d tempo valid=%d  bpm=%.2f  ppq=%.1f\n",
@@ -1665,24 +1562,9 @@ private:
     float lastView_[kNumView] = {};
     int grainTick_ = 0, grainEdit_ = -1;
     int lastPage_[kNumTracks] = {-1, -1, -1, -1};
-    int touchedTrack_ = -1, listTrack_ = -1, pixPage_[kNumTracks] = {-1, -1, -1, -1}, specTurn_ = 0;
-    uint32_t touchSig_[kNumTracks] = {};
-    bool lastOpen_[kNumTracks] = {}, justLoaded_ = true;
+    int pixPage_[kNumTracks] = {-1, -1, -1, -1};
     uint32_t waveIds_[kNumTracks] = {};
     float lastKnob_[kNumTracks][kKnobs] = {}, lastKnobTarget_[kNumTracks][kKnobs] = {};
-    std::atomic<int> shownTrack_{-1};
-    static constexpr int kKnobAskLog = 64;
-    struct KnobAsk { std::atomic<int> index{-1}; std::atomic<uint64_t> block{0}; };
-    KnobAsk knobAsk_[kKnobAskLog];
-    std::atomic<uint32_t> knobAskCount_{0};
-    std::atomic<uint64_t> askBlock_{0};
-    std::atomic<uint32_t> askMask_{0}, askCount_{0};
-    std::atomic<int> visibleTrack_{-1};
-    int lastVisible_ = -1;
-    static constexpr int kShownLog = 12;
-    struct ShownEntry { std::atomic<int> index{-1}; std::atomic<uint64_t> block{0}; };
-    ShownEntry shownLog_[kShownLog];
-    std::atomic<uint32_t> shownLogCount_{0};
     // the queue of values to tell the MPC about (sized in prepare, used only by the audio thread)
     std::vector<int> nq_;
     std::vector<unsigned char> nqFlag_;

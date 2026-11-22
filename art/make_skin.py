@@ -75,8 +75,8 @@ SPACE_H = VH - ROW_STEP   # (no longer used: Space has no picture)
 COLUMNS = {4: ["CHORUS", "DELAY", "REVERB"]}
 COL_GAP = 16
 COL_W = (VW - 2 * COL_GAP) // 3
-COL_HEAD_Y = 58                 # headings
-COL_Y0, COL_STEP = 104, 101     # the first cell under a heading, and cell to cell
+COL_HEAD_Y = 100                # headings (under the browser row)
+COL_Y0, COL_STEP = 144, 88      # the first cell under a heading, and cell to cell
 
 
 def cell_rect(m, i):
@@ -88,23 +88,26 @@ def cell_rect(m, i):
     return x, y, CELL_W, CELL_H
 
 
-KEY_W, KEY_H = 104, 96   # key face size; the images add 6 px of shadow all round
+KEY_W, KEY_H = 96, 96    # key face size; the images add 6 px of shadow all round
 KEY_PITCH = KEY_W + 8    # key to key
 KEY_Y = 504              # one row of keys under the cells, with room above and below it
 KEY_RECT = lambda x: (x - 6, KEY_Y - 6, KEY_W + 12, KEY_H + 12)
 
 
+KEY_GROUP_GAP = 40       # extra room between the key groups (tracks | ON, toggle | pages)
+
+
+def key_x(slot):
+    """The key row, left to right: track keys 1-4 (slots 0-3), the page's ON and toggle keys (4, 5),
+    then the five module page keys (6-10)."""
+    return VX + slot * KEY_PITCH + ((slot >= 4) + (slot >= 6)) * KEY_GROUP_GAP
+
+
 def track_key_x(i):
     """Track keys 1-4 on the left of the key row."""
-    return VX + i * KEY_PITCH
+    return key_x(i)
 
 
-def mod_key_x(i):
-    """The five module keys on the right, followed by the round toggle key."""
-    return VX + VW - KEY_W - (5 - i) * KEY_PITCH
-
-
-ROUND_X = VX + VW - KEY_W
 
 
 # ------------------------------------------------------------------ parameters (match src/Sculpt.cpp)
@@ -206,7 +209,7 @@ MODULES = [
      44, (47, "FREEZE")),
 ]
 CHOICES = {6: ["Off", "Fwd", "Ping"], 7: ["Kalimba", "Tape", "Choir", "Glass"],
-           14: ["Collage", "Cloud", "Stutter", "Shimmer", "Shatter", "Arpeggio", "Cascade"], 20: ["12 dB", "24 dB", "48 dB"],
+           14: ["Collage", "Cloud", "Stutter", "Shimmer", "Shatter", "Arpeggio", "Cascade"], 20: ["Low", "Band", "High"],
            22: ["Chrom", "Major", "Minor", "Penta"]}
 BOOL_OFFSETS = [40, 41, 42, 43, 44, 45, 46, 47]
 
@@ -334,6 +337,9 @@ def background(module_art, cells=True, badge=False, art_at=(VX, VY), overlay=Non
     for i in range(len(MODULES[m][1]) if cells and m is not None and m >= 4 else 0):
         x, y, w, h = cell_rect(m, i)
         pd.rounded_rectangle([x * SS, y * SS, (x + w) * SS, (y + h) * SS], 6 * SS, fill=(255, 255, 255, 9))
+    if m is not None and cells:   # plates behind the folder and file names, on every module page
+        for x, y, w, h in (FOLDER_PLATE, FILE_PLATE):
+            pd.rounded_rectangle([x * SS, y * SS, (x + w) * SS, (y + h) * SS], 8 * SS, fill=(255, 255, 255, 12))
     for c, head in enumerate(COLUMNS.get(m, [])):
         # each effect's name above its column, with a hairline under it
         x = VX + c * (COL_W + COL_GAP)
@@ -363,9 +369,9 @@ def key_image(lit, icon=None, round_key=False, scale=1.5):
     d = ImageDraw.Draw(img)
     x0, y0, x1, y1 = o, o, w - o, h - o
     d.rounded_rectangle([(x0 - 4) * SS, (y0 - 4) * SS, (x1 + 4) * SS, (y1 + 4) * SS], 12 * SS, fill=(9, 9, 9, 255))
-    d.rounded_rectangle([x0 * SS, (y0 + 2) * SS, x1 * SS, (y1 + 2) * SS], 8 * SS, fill=(7, 7, 7, 255))
-    d.rounded_rectangle([x0 * SS, y0 * SS, x1 * SS, y1 * SS], 8 * SS, fill=(32, 32, 32, 255))
-    d.line([(x0 + 8) * SS, (y0 + 1) * SS, (x1 - 8) * SS, (y0 + 1) * SS], fill=(46, 46, 46, 255), width=SS)
+    d.rounded_rectangle([x0 * SS, (y0 + 2) * SS, x1 * SS, (y1 + 2) * SS], 8 * SS, fill=(12, 12, 12, 255))
+    d.rounded_rectangle([x0 * SS, y0 * SS, x1 * SS, y1 * SS], 8 * SS, fill=(46, 46, 46, 255))
+    d.line([(x0 + 8) * SS, (y0 + 1) * SS, (x1 - 8) * SS, (y0 + 1) * SS], fill=(64, 64, 64, 255), width=SS)
     col = (255, 255, 255, 255) if lit else (92, 91, 88, 255)
     # on keys show a white icon, off keys a grey one (no border). The icon is drawn at its usual
     # 32 px size and then enlarged to suit the bigger key.
@@ -455,7 +461,7 @@ def icon_word(word):
 def icon_digit(n):
     """A number drawn into the key itself (text labels over keys do not draw, or block taps, on the MPC)."""
     def draw(d, ox, oy, col):
-        d.text(((ox + 15) * SS, (oy + 16) * SS), str(n), font=label_font(30 * SS), fill=col, anchor="mm")
+        d.text(((ox + 15) * SS, (oy + 16) * SS), str(n), font=label_font(18 * SS), fill=col, anchor="mm")
     return draw
 
 
@@ -561,12 +567,7 @@ def small_key(w, h, lit, glyph=None, text_size=20):
 
 def make_source(peaks_by_sample):
     art = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
-    # plates behind the folder and file names (above the visual, so on a full-tab overlay)
-    plates = canvas(1280, 628)
-    pd = ImageDraw.Draw(plates)
-    for x, y, w, h in (FOLDER_PLATE, FILE_PLATE):
-        pd.rounded_rectangle([x * SS, y * SS, (x + w) * SS, (y + h) * SS], 8 * SS, fill=(255, 255, 255, 12))
-    files = {"overlay": down(plates)}
+    files = {}
     # the waveform itself is drawn live from the plugin's columns (wave_bars)
 
     files["start"] = save(thumb_line(SRC_H + 14, CYAN), "src_start.png")
@@ -695,7 +696,7 @@ def tide_strips():
 
 
 PIX_COLS, PIX_HEIGHTS, PIX_DISSOLVE = 128, 18, 8   # match the plugin
-PIX_TOP, PIX_ROW = VY + 18, 6        # the pixel grid's top, and row pitch
+PIX_TOP, PIX_ROW = VY + 52, 5        # the pixel grid's top (under the browser row), and row pitch
 PIX_MID = PIX_TOP + 17 * PIX_ROW + 3 # the centre row
 PIX_W = 7                            # a pixel's width (columns are VW / 128 apart)
 PIX_VARIANTS = 12                    # different random dissolve patterns, mixed across columns
@@ -747,7 +748,7 @@ def make_grain(_peaks):
     return art, pixel_strips()
 
 
-SPEC_TOP, SPEC_H = VY + 34, 200      # the Filter spectrum's area: lines grow up from its bottom
+SPEC_TOP, SPEC_H = VY + 52, 168      # the Filter spectrum's area (under the browser row): lines grow up from its bottom
 SPEC_IN_W, SPEC_OUT_W = 15, 15       # line widths: the same, so each band is one line: white up to what comes out, dark above it
 
 
@@ -771,18 +772,21 @@ def make_filter():
     d.line([(0, (SPEC_TOP - VY + SPEC_H) * SS), (VW * SS, (SPEC_TOP - VY + SPEC_H) * SS)], fill=(255, 255, 255, 26), width=SS)
     art.alpha_composite(down(img))
     files = {"cut": save(thumb_line(SPEC_H + 14, WHITE_N, 2, dash=5), "flt_cut.png")}
-    # slope: three roll-off glyphs
-    for k, steep in enumerate((1.0, 2.0, 4.0)):
+    # slope: low pass, band pass, high pass glyphs
+    for k in range(3):
         img = canvas(90, 40)
         d = ImageDraw.Draw(img)
         pts = []
         for j in range(61):
-            t = j / 60
-            y = 8 if t < 0.45 else 8 + min(30, 30 * ((t - 0.45) / 0.55) ** (1 / steep) * (steep / 4) ** 0.2)
-            pts.append(((4 + t * 82) * SS, y * SS))
+            x = (j / 60 - 0.5) * 6
+            g = (1 / (1 + math.exp(4 * x)), math.exp(-1.5 * x * x), 1 / (1 + math.exp(-4 * x)))[k]
+            pts.append(((4 + j / 60 * 82) * SS, (36 - 28 * g) * SS))
         d.line(pts, fill=rgba(WAVE_GREY, 1), width=2 * SS)
         files["slope_%d" % k] = save(down(img), "flt_slope_%d.png" % k)
     return art, files
+
+
+COLOR_TOP, COLOR_H = 48, 196   # the Color picture's band inside the visual (under the browser row)
 
 
 def make_color():
@@ -793,9 +797,9 @@ def make_color():
         img = canvas(VW, VH)
         d = ImageDraw.Draw(img)
         for j in range(L):
-            y0 = VH * (0.12 + 0.70 * j / (L - 1))
+            y0 = COLOR_TOP + COLOR_H * (0.12 + 0.76 * j / (L - 1))
             base = 0.35 + 0.65 * abs(math.sin(j * 1.9))
-            amp = VH * 0.075 * base
+            amp = COLOR_H * 0.075 * base
             ph = j * 0.45
             pts = []
             for x in range(0, VW + 1, 2):
@@ -811,20 +815,19 @@ def make_color():
             d.line(pts, fill=colour_fn(j), width=int(width * SS))
         return down(img)
 
-    art = traces("clean", lambda j: rgba(DEEP, 0.55), 1)
+    art = traces("clean", lambda j: rgba(WHITE_N, 0.22), 1)
     files = {
-        "drive": save(traces("drive", lambda j: rgba(PINK if j % 3 == 1 else (ICE if j == 4 else CYAN),
-                                                     0.4 + 0.55 * (1 - abs(j - 4) / 5)), 2), "col_drive.png"),
-        "crush": save(traces("crush", lambda j: rgba(ICE, 0.75), 1.5), "col_crush.png"),
+        "drive": save(traces("drive", lambda j: rgba(WHITE_N, 0.4 + 0.55 * (1 - abs(j - 4) / 5)), 2), "col_drive.png"),
+        "crush": save(traces("crush", lambda j: rgba(WHITE_N, 0.75), 1.5), "col_crush.png"),
     }
     # noise: speckle revealed from the bottom
     rnd = random.Random(12)
     img = canvas(VW, VH)
     d = ImageDraw.Draw(img)
     for _ in range(1400):
-        x, y = rnd.random() * VW, rnd.random() * VH
+        x, y = rnd.random() * VW, COLOR_TOP + rnd.random() * COLOR_H
         d.rectangle([x * SS, y * SS, (x + 1.6) * SS, (y + 1.6) * SS],
-                    fill=rgba(PINK if rnd.random() < 0.15 else ICE, 0.25 + 0.5 * rnd.random()))
+                    fill=rgba(WHITE_N, 0.25 + 0.5 * rnd.random()))
     files["noise"] = save(down(img), "col_noise.png")
     a2 = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
     a2.alpha_composite(art, (0, 0))
@@ -1096,29 +1099,6 @@ def knob_idx(t, k):
     return KNOB0 + t * N_KNOBS + k
 
 
-# Per-track pictures (track 1 keeps the original slots), and a BROWSE per track: matches Sculpt.cpp
-BROWSE_OPEN0 = KNOB0 + 4 * N_KNOBS          # 999..1002
-WAVE_T0 = BROWSE_OPEN0 + 4                  # 1003: waveform, tracks 2-4
-PIX_T0 = WAVE_T0 + 3 * 128                  # 1387: Grain pixels, tracks 2-4
-SPEC_IN_T0 = PIX_T0 + 3 * 128               # 1771: spectrum in, tracks 2-4
-SPEC_OUT_T0 = SPEC_IN_T0 + 3 * 64           # 1963: spectrum out, tracks 2-4
-MARK_T0 = SPEC_OUT_T0 + 3 * 64              # 2155: playhead, loop end, rotate at, tracks 2-4
-
-
-def picture_map(t):
-    """Track t's own picture values, for the shared ones the pages were drawn with."""
-    m = {BROWSER_OPEN: BROWSE_OPEN0 + t}
-    if t == 0:
-        return m
-    for c in range(128):
-        m[WAVE0 + c] = WAVE_T0 + (t - 1) * 128 + c
-        m[GRAIN_PIX0 + c] = PIX_T0 + (t - 1) * 128 + c
-    for b in range(64):
-        m[SPEC_IN0 + b] = SPEC_IN_T0 + (t - 1) * 64 + b
-        m[SPEC_OUT0 + b] = SPEC_OUT_T0 + (t - 1) * 64 + b
-    for k, p in enumerate((PLAYHEAD, LOOP_END, ROTATE_AT)):
-        m[p] = MARK_T0 + (t - 1) * 3 + k
-    return m
 SPEC_BANDS = 64
 SPEC_IN0 = GRAIN_PIX0 + 128              # 819..882: the Filter screen, sound going into the filter
 SPEC_OUT0 = SPEC_IN0 + SPEC_BANDS        # 883..946: ...and coming out of it
@@ -1202,7 +1182,7 @@ def visual_entries(m, t, files):
         # where Cutoff sits, on the same scale
         E.append(thumb("cutoff", files["cut"], P(16), (VX - 13, SPEC_TOP - 7, VW + 26, SPEC_H + 14)))
         for k in range(3):
-            E.append(image("slope %d" % k, files["slope_%d" % k], (VX + VW - 94, VY + 2, 90, 40),
+            E.append(image("slope %d" % k, files["slope_%d" % k], (VX + VW - 94, SPEC_TOP - 4, 90, 40),
                            invalidating=enabled(k, 3, vidx(20))))
     elif m == 3:  # COLOR
         E.append(reveal("noise", files["noise"], P(28), (VX, VY, VW, VH), direction="Vertical"))
@@ -1302,7 +1282,6 @@ def view_map(t):
         v[vidx(CHORUS + k)] = vidx(CHORUS) - 16 + t * 4 + k
     v[vidx(REVMIX)] = vidx(REVMIX) - 4 + t
     v[vidx(REVTYPE)] = vidx(REVTYPE) - 4 + t
-    v.update(picture_map(t))
     return v
 
 
@@ -1329,101 +1308,51 @@ def on_page(entries, m, t):
 
 def page_key_x(k):
     """The five module page keys sit at the right end of the key row."""
-    return VX + VW - KEY_W - (4 - k) * KEY_PITCH
+    return key_x(6 + k)
 
 
-def build_track_tab(t, files, keys):
-    """Track t's tab: one page per module (only the picked one shows), the module keys pick the page,
-    and on the left an ON/OFF key for the page's module plus its Sync / Lock / Freeze."""
-    vmap = view_map(t)
+def build_main_tab(files, keys):
+    """The SCULPT tab: one page per module (only the picked one shows). Track keys 1-4 pick the track
+    everything on screen works on (the view, the knobs and the pictures follow it); the module keys
+    pick the page; ON/OFF and Sync / Lock / Freeze work the page's module on that track."""
     C = []
     for m, (title, cells, on_off, toggle) in enumerate(MODULES):
         P = [image("page bg %d" % m, files[m]["bg"], (0, 0, 1280, 628))]
-        if m != 0:
-            P.append(label_text("module", " ".join(title), (VX + VW - 400, 12, 400, 36), 26, BRIGHT,
-                                "right verticallyCentred", "SemiBold"))
-        P += visual_entries(m, t, files[m])
-        if m == 0:
-            P += browser_entries(t, files[0])
-            P = retarget(P, vmap)
-            for e in P:   # the browser row reads FOLDER and FILE, not "T1 Folder"
-                kind = e["componentData"]["type"]
-                if kind in ("browseFolder", "browseFile"):
-                    for pair in e["handle remapping"]["map"]:
-                        if pair["key"] == "Data" and "WithName" not in pair["value"]:
-                            pair["value"] = "WithName[%s]/%s" % ("Folder" if kind == "browseFolder" else "File", pair["value"])
+        P += visual_entries(m, 0, files[m])
         for i, (name, off, bip, _steps) in enumerate(cells):
             x, y, w, h = cell_rect(m, i)
             comp = ("cellBi" if bip else "cellUni") + ("Wide" if w != CELL_W else "")
             P.append(entry("%s %d" % (comp, i), comp, {"version": 1, "handleName": "Data"}, (x, y, w, h),
-                           remap={"Data": "WithName[%s]/Parameter %d" % (name.title(), knob_idx(t, i)),
-                                  "QLink": "Parameter %d" % knob_idx(t, i)}, focus="Yes"))
-        P.append(button("on key", keys["on_on"], keys["on_off"], "Parameter %d" % pidx(t, on_off), KEY_RECT(track_key_x(0))))
+                           remap={"Data": "WithName[%s]/Parameter %d" % (name.title(), knob_idx(0, i)),
+                                  "QLink": "Parameter %d" % knob_idx(0, i)}, focus="Yes"))
+        P.append(button("on key", keys["on_on"], keys["on_off"], "Parameter %d" % vidx(on_off), KEY_RECT(key_x(4))))
         if toggle:
             tag = toggle[1].lower()
-            P.append(button("toggle key", keys["tg_%s_on" % tag], keys["tg_%s_off" % tag], "Parameter %d" % pidx(t, toggle[0]),
-                            KEY_RECT(track_key_x(1))))
-        C += on_page(retarget(P, vmap), m, t)
-    for k in range(5):
-        C.append(button("page key %d" % k, keys["mod_on_%d" % k], keys["mod_off_%d" % k], "Parameter %d" % (PAGE0 + t),
+            P.append(button("toggle key", keys["tg_%s_on" % tag], keys["tg_%s_off" % tag], "Parameter %d" % vidx(toggle[0]),
+                            KEY_RECT(key_x(5))))
+        C += on_page(P, m, 0)
+    for k in range(4):   # one tap picks the track; the picked one is lit
+        C.append(button("track key %d" % k, keys["trk_on_%d" % k], keys["trk_off_%d" % k], "Parameter %d" % EDIT_TRACK,
+                        KEY_RECT(key_x(k)), button_id=k, group=4))
+    for k in range(5):   # one tap shows the module's page
+        C.append(button("page key %d" % k, keys["mod_on_%d" % k], keys["mod_off_%d" % k], "Parameter %d" % PAGE0,
                         KEY_RECT(page_key_x(k)), button_id=k, group=5))
-    C += on_page(retarget(list_entries(files[0]), vmap), 0, t)   # last, so the open browser covers everything
+    # the browser row sits at the top of every page
+    B = browser_entries(0, files[0])
+    for e in B:   # it reads FOLDER and FILE
+        kind = e["componentData"]["type"]
+        if kind in ("browseFolder", "browseFile"):
+            for pair in e["handle remapping"]["map"]:
+                if pair["key"] == "Data" and "WithName" not in pair["value"]:
+                    pair["value"] = "WithName[%s]/%s" % ("Folder" if kind == "browseFolder" else "File", pair["value"])
+    C += B
+    C += list_entries(files[0])   # last, so the open browser covers everything
     root = {"version": 2, "actions": [],
             "backgroundData": {"version": 1, "focussed": {"version": 1, "colour": "ff101010", "image": files[0]["bg"]},
                                "unfocussed": {"version": 1, "colour": "ff101010", "image": files[0]["bg"]}},
             "ignoreMousePresses": False, "disableCoarseDataWheel": False, "componentsData": C}
-    return {"version": 1, "tabName": "TRACK %d" % (t + 1), "fnKeyIndex": t, "fnKeySubIndex": 0, "componentDefinition": root,
+    return {"version": 1, "tabName": "SCULPT", "fnKeyIndex": 0, "fnKeySubIndex": 0, "componentDefinition": root,
             "qlinkBoundsData": []}
-
-
-def build_tab(m, files, keys):
-    title, cells, on_off, toggle = MODULES[m]
-    t = 0   # every binding below goes through the view, which shows the track Edit Track picks
-    C = []
-    # header: just the module's name; on Source the browser row takes the header's space
-    if m != 0:
-        C.append(label_text("module", " ".join(title), (VX + VW - 400, 12, 400, 36), 26, BRIGHT, "right verticallyCentred",
-                            "SemiBold"))
-    # the visual
-    C += visual_entries(m, t, files[m])
-    if m == 0:
-        C += browser_entries(t, files[0])
-    # cells: name (fixed text), then the slot component with value and bar
-    rows = len(cells) // 4
-    for i, (name, off, bip, _steps) in enumerate(cells):
-        x, y, w, h = cell_rect(m, i)
-        comp = ("cellBi" if bip else "cellUni") + ("Wide" if w != CELL_W else "")
-        C.append(entry("%s %d" % (comp, i), comp, {"version": 1, "handleName": "Data"}, (x, y, w, h),
-                       remap={"Data": "Parameter %d" % vidx(off)}, focus="Yes"))
-    # module keys (right): on/off for each module of this track; the current module gets a marker
-    for k in range(5):
-        x = mod_key_x(k)
-        C.append(button("module key %d" % k, keys["mod_on_%d" % k], keys["mod_off_%d" % k],
-                        "Parameter %d" % vidx(MODULES[k][2]), KEY_RECT(x)))
-    # track keys (left): one tap picks the track to edit; the picked one is lit
-    for k in range(4):
-        x = track_key_x(k)
-        C.append(button("track key %d" % k, keys["trk_on_%d" % k], keys["trk_off_%d" % k], "Parameter %d" % EDIT_TRACK,
-                        KEY_RECT(x), button_id=k, group=4))
-    # the round toggle key, captioned with what it does on this module
-    if toggle:
-        C.append(button("toggle key", keys["round_on"], keys["round_off"], "Parameter %d" % vidx(toggle[0]),
-                        KEY_RECT(ROUND_X)))
-    if m == 0:
-        C += list_entries(files[0])   # last, so the open browser covers the cells and keys
-    root = {"version": 2, "actions": [],
-            "backgroundData": {"version": 1, "focussed": {"version": 1, "colour": "ff101010", "image": files[m]["bg"]},
-                               "unfocussed": {"version": 1, "colour": "ff101010", "image": files[m]["bg"]}},
-            "ignoreMousePresses": False, "disableCoarseDataWheel": False, "componentsData": C}
-    if m in COLUMNS:   # touching a column banks the Q-Links to that effect
-        q = ["%d %d %d %d" % (VX + c * (COL_W + COL_GAP) - 6, COL_Y0 - 6, COL_W + 12, 4 * COL_STEP)
-             for c in range(len(COLUMNS[m]))]
-    else:
-        q = ["%d %d %d %d" % (VX - 6, cell_xy(4 * r, rows)[1] - 6, VW + 12, ROW_STEP) for r in range(rows)]
-    if m == 0:
-        q.append("%d %d %d %d" % (FOLDER_PLATE[0] - 6, BR_Y - 4, FILE_PLATE[0] + FILE_PLATE[2] - FOLDER_PLATE[0] + 12, BR_H + 8))
-    return {"version": 1, "tabName": title, "fnKeyIndex": m, "fnKeySubIndex": 0, "componentDefinition": root,
-            "qlinkBoundsData": q}
 
 
 # ------------------------------------------------------------------ the MIX tab
@@ -1553,7 +1482,7 @@ def build_mix_tab(files):
             "ignoreMousePresses": False, "disableCoarseDataWheel": False, "componentsData": C}
     q = ["%d %d %d %d" % (strip_x(0) + 80, FT - 20, 4 * (STRIP_W + 12) - 20, FH + 40),
          "%d %d %d %d" % (strip_x(0) + 8, 508, 4 * (STRIP_W + 12) - 20, 52)]
-    return {"version": 1, "tabName": "MIX", "fnKeyIndex": 4, "fnKeySubIndex": 0, "componentDefinition": root,
+    return {"version": 1, "tabName": "MIX", "fnKeyIndex": 1, "fnKeySubIndex": 0, "componentDefinition": root,
             "qlinkBoundsData": q}
 
 
@@ -1580,8 +1509,7 @@ def replacement_strings():
     for t in range(4):
         rs.append({"key": "Parameter %d" % (vidx(REVTYPE) - 4 + t), "value": REV_TYPES})
     rs.append({"key": "Parameter %d" % vidx(REVTYPE), "value": REV_TYPES})
-    for t in range(4):
-        rs.append({"key": "Parameter %d" % (PAGE0 + t), "value": ["Source", "Grain", "Filter", "Color", "Space"]})
+    rs.append({"key": "Parameter %d" % PAGE0, "value": ["Source", "Grain", "Filter", "Color", "Space"]})
     for off in BOOL_OFFSETS:
         rs.append({"key": "Parameter %d" % vidx(off), "value": ["Off", "On"]})
     for b in (B_LOAD, B_FOLD_PREV, B_FOLD_NEXT, B_FILE_PREV, B_FILE_NEXT, B_HAS_FILE):
@@ -1591,18 +1519,18 @@ def replacement_strings():
 
 def qlinks():
     m = []
-    for t in range(4):   # each track's knobs: page cells 1-4, 5-8, 9-12 (Source's 9-10 browse folders and files)
-        q = {"Q-Link %d" % n: -1 for n in range(1, 17)}
-        for i in range(N_KNOBS):
-            q["Q-Link %d" % (13 - 4 * (i // 4) + i % 4)] = knob_idx(t, i)
-        m.append({"Tab": t + 1, "SubTab": 1, "Bank Direction": "RowTopDown", "Q-Links": q})
+    # the SCULPT tab: the screen's knobs, page cells 1-4, 5-8, 9-12 (Source's 9-10 browse folders and files)
+    q = {"Q-Link %d" % n: -1 for n in range(1, 17)}
+    for i in range(N_KNOBS):
+        q["Q-Link %d" % (13 - 4 * (i // 4) + i % 4)] = knob_idx(0, i)
+    m.append({"Tab": 1, "SubTab": 1, "Bank Direction": "RowTopDown", "Q-Links": q})
     # MIX: the four volumes, then the four pans, then the master volume
     q = {"Q-Link %d" % n: -1 for n in range(1, 17)}
     for t in range(4):
         q["Q-Link %d" % (13 + t)] = midx(t, M_VOL)
         q["Q-Link %d" % (9 + t)] = midx(t, M_PAN)
     q["Q-Link 5"] = 0
-    m.append({"Tab": 5, "SubTab": 1, "Bank Direction": "RowTopDown", "Q-Links": q})
+    m.append({"Tab": 2, "SubTab": 1, "Bank Direction": "RowTopDown", "Q-Links": q})
     prog = {}
     # program Q-Links: the four track volumes, then cutoff, reverb send and speed per track
     for t in range(4):
@@ -1641,11 +1569,14 @@ def main():
     for word in ("SYNC", "LOCK", "FREEZE"):
         keys["tg_%s_on" % word.lower()] = save(key_image(True, icon_word(word)), "key_%s_on.png" % word.lower())
         keys["tg_%s_off" % word.lower()] = save(key_image(False, icon_word(word)), "key_%s_off.png" % word.lower())
+    for k in range(4):
+        keys["trk_on_%d" % k] = save(key_image(True, icon_digit(k + 1)), "trk_%d_on.png" % k)
+        keys["trk_off_%d" % k] = save(key_image(False, icon_digit(k + 1)), "trk_%d_off.png" % k)
     for k in range(5):
         keys["mod_on_%d" % k] = save(key_image(True, ICONS[k]), "mod_%d_on.png" % k)
         keys["mod_off_%d" % k] = save(key_image(False, ICONS[k]), "mod_%d_off.png" % k)
 
-    tabs = [build_track_tab(t, files, keys) for t in range(4)]
+    tabs = [build_main_tab(files, keys)]
     mix_art, mix_files = make_mix()
     mix_files["bg"] = save(background(mix_art, cells=False, badge=False, art_at=(0, 0)), "bg_mix.png")
     tabs.append(build_mix_tab(mix_files))
