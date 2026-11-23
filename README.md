@@ -15,9 +15,9 @@ picture that changes as you turn those knobs.
 
 ## Playing it
 
-- **Pads and keys play the picked track** (track keys 1–4 on the screen), chromatically up and
-  down from note 24 (C0, pad A01 in the MPC's usual pad layout), which plays the loop at its
-  recorded pitch.
+- **Pads and keys play the picked track** (track keys 1–4 on the screen). Pad 1 of whichever pad
+  bank is showing plays the loop at its recorded pitch, and the 16 pads go up a semitone each.
+  Every bank plays the same, so the MPC's bank never matters (a keyboard repeats every 16 notes).
 - **MIDI channels 2–5 always play tracks 1–4**, so a sequence can play each track on its own
   channel. Channel 1 (and 6–16) plays the picked track.
 - **To loop a track in time without holding a pad,** turn on **SYNC** (on the Source page, with the track picked)

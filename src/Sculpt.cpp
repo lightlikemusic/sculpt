@@ -1496,7 +1496,10 @@ private:
             // so a sequence can address each track whatever is picked.
             const int ch = e.channel();
             const int track = (ch >= 1 && ch <= kNumTracks) ? ch - 1 : screenTrack();
-            const float ratio = std::pow(2.0f, (float)(e.note() - getInt(kRootBase + track)) / 12.0f);
+            // Every pad bank plays the same: banks are 16 notes apart, so the note is folded into
+            // the 16 above Root. Pad 1 of whichever bank is showing plays the loop at its own pitch.
+            const int semis = ((e.note() - getInt(kRootBase + track)) % 16 + 16) % 16;
+            const float ratio = std::pow(2.0f, (float)semis / 12.0f);
             tracks_[track].noteOn(e.note(), ratio, 0.25f + 0.75f * (float)e.velocity() / 127.0f);
         }
         else if (e.isNoteOff())
