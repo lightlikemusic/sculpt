@@ -99,19 +99,18 @@ until you pick another sound.
 
 ## Loading your own samples
 
-The **Source** screen has a browser row above the waveform. Sculpt finds every folder of WAV
-files on the MPC's drives by itself: the internal drive, SD cards and USB sticks. It does this
-in the background when it starts, and the folder name reads "Scanning drives..." until it's
-done.
+Every page has a browser row at the top: **BROWSE**, then the **Folder** and **File** of the
+sound the picked track is playing (to read only). Sculpt finds every folder of WAV files on the
+MPC's drives by itself: the internal drive, SD cards and USB sticks. It does this in the
+background when it starts, and the folder name reads "Scanning drives..." until it's done.
 
-1. Step through folders with **‹ FOLDER ›** and through files with **‹ FILE ›**. You can also
-   touch a name and turn the Q-Links (the third bank on the Source screen) or the data wheel.
-   Or tap **BROWSE** (at the left of the row) to open the full-screen browser: folders on the
-   left and the open folder's files on the right, with the current choice highlighted. Scroll a
-   list one item at a time with the big **▲ ▼** keys beside it, or tap any row in it and turn the
-   data wheel (or the Q-Links). Whatever file is highlighted loads by itself once you stop for a
-   moment, so you can audition by scrolling. Tap BROWSE again to close the browser.
-2. The highlighted file loads by itself a moment after you stop on it. The track now plays that file, and **SAMPLE** shows its name. The waveform shows the file's real shape.
+1. Tap **BROWSE** to open the browser: folders on the left and the open folder's files on the
+   right, with the current choice highlighted. Scroll a list one item at a time with the big
+   **▲ ▼** keys beside it, tap a row, or touch a list and turn the data wheel (or the Q-Links).
+   Scrolling only highlights: nothing loads yet.
+2. Tap **LOAD** (top right while the browser is open) to load the highlighted file. The browser
+   closes, the track plays that file, and the waveform shows its real shape. Closing the browser
+   with BROWSE instead leaves the track as it was.
 3. To go back to a built-in loop, pick one with **SAMPLE**.
 
 Your project saves the file each track plays and loads it again when you reopen the project.

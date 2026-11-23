@@ -202,8 +202,6 @@ inline int cellTarget(int t, int m, int k)
     if (m < 0 || m >= kModules || k < 0 || k >= kKnobs) return -1;
     if (m < 4)
     {
-        if (m == 0 && k == 8) return bidx(t, bFolder);   // Source's third Q-Link bank browses
-        if (m == 0 && k == 9) return bidx(t, bFile);
         if (k >= 8) return -1;
         if (m == 0 && k == 0) return kStartBase + t;
         return idx(t, kBlock[m][k]);
@@ -397,7 +395,8 @@ public:
             if (t != 0) { out = ""; return true; }   // only the first 12 knobs are used: the screen's
             const int target = cellTarget(screenTrack(), mpc::clamp(getInt(kPage0), 0, kModules - 1), k);
             if (target < 0) { out = ""; return true; }
-            const float tp = param(target).toPlain(plain);
+            const int nb = browseCount(screenTrack(), target);
+            const float tp = nb > 0 ? (float)std::lround(mpc::clamp(plain, 0.0f, 1.0f) * (float)(nb - 1)) : param(target).toPlain(plain);
             if (!formatValue(target, tp, out)) out = param(target).display(tp);
             return true;
         }
@@ -985,21 +984,59 @@ private:
         return n;
     }
 
+    // Folder and File knobs span just the folders (or this folder's files) there are, so each
+    // item is a real slice of the knob: the MPC then sees every change, and shows the right name.
+    // 0 = not a browser setting.
+    int browseCount(int t, int target) const
+    {
+        if (target != bidx(t, bFolder) && target != bidx(t, bFile)) return 0;
+        const sculpt::Library* lib = scanner_.library();
+        if (!lib || lib->folders.empty()) return 1;
+        if (target == bidx(t, bFolder)) return (int)lib->folders.size();
+        const int fo = mpc::clamp(getInt(bidx(t, bFolder)), 0, (int)lib->folders.size() - 1);
+        return std::max(1, (int)lib->folders[(size_t)fo].files.size());
+    }
+    float knobValueOf(int t, int target) const
+    {
+        const int n = browseCount(t, target);
+        if (n == 0) return getNormalised(target);
+        return n > 1 ? (float)mpc::clamp(getInt(target), 0, n - 1) / (float)(n - 1) : 0.0f;
+    }
+
     void syncKnobs()
     {
         const int et = screenTrack(), page = mpc::clamp(getInt(kPage0), 0, kModules - 1);
         const int key = et * kModules + page;
         const bool newPage = key != lastPage_[0];
         lastPage_[0] = key;
+        if (newPage) knobSettle_ = kSettleBlocks;
+        else if (knobSettle_ > 0) --knobSettle_;
         for (int k = 0; k < kKnobs; ++k)
         {
             const int knob = knobIdx(0, k), target = cellTarget(et, page, k);
-            const float kv = getNormalised(knob), tv = target >= 0 ? getNormalised(target) : 0.0f;
+            const float kv = getNormalised(knob), tv = target >= 0 ? knobValueOf(et, target) : 0.0f;
             if (target < 0) { lastKnob_[0][k] = kv; continue; }   // nothing behind this knob on this page
+            const int nb = browseCount(et, target);
             if (newPage)
             {
                 setNormalised(knob, tv); notifyLater(knob);
                 lastKnob_[0][k] = lastKnobTarget_[0][k] = tv;
+            }
+            else if (kv != lastKnob_[0][k] && knobSettle_ > 0)
+            {   // just after a page or track change: a late echo of the old knob value, not a
+                // turn. Put the knob back to what it stands for now.
+                setNormalised(knob, tv); notifyLater(knob);
+                lastKnob_[0][k] = lastKnobTarget_[0][k] = tv;
+            }
+            else if (kv != lastKnob_[0][k] && nb > 0)
+            {   // Folder / File: one item per click (or straight to where a drag lands)
+                const int cur = mpc::clamp(getInt(target), 0, nb - 1);
+                int want = (int)std::lround(kv * (float)(nb - 1));
+                if (want == cur) want = mpc::clamp(cur + (kv > lastKnob_[0][k] ? 1 : -1), 0, nb - 1);
+                set(target, (float)want); notifyLater(target);
+                const float nv = nb > 1 ? (float)want / (float)(nb - 1) : 0.0f;
+                setNormalised(knob, nv); notifyLater(knob);
+                lastKnob_[0][k] = lastKnobTarget_[0][k] = nv;
             }
             else if (kv != lastKnob_[0][k])
             {   // turned on the screen, the data wheel or a Q-Link: move the setting. A setting with
@@ -1035,9 +1072,11 @@ private:
     void syncView()
     {
         const int et = screenTrack();
+        if (settle_ > 0) --settle_;
         if (et != lastEdit_)
         {   // another track picked: the view shows it
             lastEdit_ = et;
+            settle_ = kSettleBlocks;
             for (int v = 0; v < kNumView; ++v)
             {
                 const float tn = getNormalised(viewTarget(et, v));
@@ -1051,7 +1090,14 @@ private:
         {
             const int target = viewTarget(et, v);
             const float vn = getNormalised(viewParam(v)), tn = getNormalised(target);
-            if (vn != lastView_[v])
+            if (vn != lastView_[v] && settle_ > 0)
+            {   // just after a switch: a late echo of the previous track's value, not a press.
+                // Put the picked track's value back instead of copying it across.
+                setNormalised(viewParam(v), tn);
+                notifyLater(viewParam(v));
+                lastView_[v] = tn; lastTarget_[v] = tn;
+            }
+            else if (vn != lastView_[v])
             {   // pressed or turned on the screen (ON / toggle / browser): change the track
                 setNormalised(target, vn);
                 lastView_[v] = vn; lastTarget_[v] = vn;
@@ -1093,9 +1139,9 @@ private:
         return fit(name);
     }
 
-    // Taps on the list rows. Only the highlighted (middle) file row acts: it loads that file. The
-    // other rows are for reading; scrolling is one item at a time with the up/down keys (the
-    // Folder -/+ and File -/+ settings), the Q-Links or the data wheel.
+    // Taps on the list rows highlight that row (a folder row opens that folder); nothing loads
+    // until LOAD is pressed. Closing the list without loading puts the names back to the sound
+    // that is playing.
     void listTaps(const sculpt::Library* lib)
     {
         bool tapped[2 * kListRows];
@@ -1105,11 +1151,27 @@ private:
             tapped[r] = v != rowHeld_[r];
             rowHeld_[r] = v;
         }
-        if (!lib || lib->folders.empty() || !tapped[kListRows + kListMid]) return;
         const int t = listTrack();
-        const int fo = mpc::clamp(getInt(bidx(t, bFolder)), 0, (int)lib->folders.size() - 1);
-        const int nFiles = (int)lib->folders[(size_t)fo].files.size();
-        loader_.requestIndex(t, fo, mpc::clamp(getInt(bidx(t, bFile)), 0, nFiles - 1));
+        const bool open = getBool(kBrowserOpen);
+        if (wasOpen_ && !open && lib) locate(t, lib, soundPath(t));
+        wasOpen_ = open;
+        if (!lib || lib->folders.empty()) return;
+        for (int r = 0; r < 2 * kListRows; ++r)
+        {
+            if (!tapped[r] || r % kListRows == kListMid) continue;
+            const int off = r % kListRows - kListMid;
+            if (r < kListRows)
+            {
+                const int fo = mpc::clamp(getInt(bidx(t, bFolder)) + off, 0, (int)lib->folders.size() - 1);
+                setAndNotify(bidx(t, bFolder), (float)fo);
+            }
+            else
+            {
+                const int fo = mpc::clamp(getInt(bidx(t, bFolder)), 0, (int)lib->folders.size() - 1);
+                const int nFiles = std::max(1, (int)lib->folders[(size_t)fo].files.size());
+                setAndNotify(bidx(t, bFile), (float)mpc::clamp(getInt(bidx(t, bFile)) + off, 0, nFiles - 1));
+            }
+        }
     }
 
     // Redraw the list rows whenever what they show could have changed.
@@ -1175,11 +1237,13 @@ private:
                     setAndNotify(bidx(t, bFile), (float)fi);
                 }
                 lastFile_[t] = fi;
-                // Whatever is highlighted loads by itself, once it has rested for a moment, so a
-                // quick scroll through a long list does not load every file on the way.
-                if (fo != prevFo || fi != prevFi) loadDue_[t] = (int)(0.15 * sampleRate());
-                if (loadDue_[t] > 0 && (loadDue_[t] -= n) <= 0) { loadDue_[t] = 0; loader_.requestIndex(t, fo, fi); }
-                if (load) { loadDue_[t] = 0; loader_.requestIndex(t, fo, fi); }
+                (void)prevFo; (void)prevFi;
+                // scrolling only highlights: the LOAD key in the open list loads what is highlighted
+                if (load)
+                {   // load what is highlighted, and close the list (the names stay on it)
+                    loadDue_[t] = 0; loader_.requestIndex(t, fo, fi);
+                    if (getBool(kBrowserOpen)) { setAndNotify(kBrowserOpen, 0.0f); wasOpen_ = false; }
+                }
             }
 
             // choosing a built-in loop in SAMPLE drops the file
@@ -1385,7 +1449,7 @@ private:
         B("grain_on",  "Grain On",  false);
         B("filter_on", "Filter On", false);
         B("color_on",  "Color On",  false);
-        B("space_on",  "Space On",  true);
+        B("space_on",  "Space On",  t == 0);   // only track 1 starts with Space on
         // per-module toggles
         B("sync",   "Sync",   false);
         B("lock",   "Lock",   false);
@@ -1491,7 +1555,15 @@ private:
         std::vector<float> v((size_t)numParams());
         for (int i = 0; i < numParams(); ++i) v[(size_t)i] = param(i).def;
         for (const Edit& e : edits)   // a preset that sets a track's filter turns that Filter on (it is off by default)
+        {
             if (e.track >= 0 && e.param >= pCutoff && e.param <= pFWet) v[(size_t)idx(e.track, pFilterOn)] = 1.0f;
+            // ...and one that sets its Space (delay, reverb, chorus) turns Space on (off by default on 2-4)
+            if (e.track >= 0 && e.param >= pDelay && e.param <= pSDecay) v[(size_t)idx(e.track, pSpaceOn)] = 1.0f;
+            for (int t = 0; t < kNumTracks; ++t)
+                if (e.track < 0 && (e.param == kRevMixBase + t || e.param == kRevTypeBase + t
+                                    || (e.param >= cidx(t, 0) && e.param < cidx(t, 0) + cCount)))
+                    v[(size_t)idx(t, pSpaceOn)] = 1.0f;
+        }
         for (const Edit& e : edits)
         {
             if (e.track < 0) v[(size_t)e.param] = e.value;
@@ -1616,6 +1688,7 @@ private:
     sculpt::Sample* active_[kNumTracks] = {nullptr, nullptr, nullptr, nullptr};   // a loaded file, audio thread only
     bool keyHeld_[kNumTracks][bCount] = {};
     bool rowHeld_[2 * kListRows] = {};
+    bool wasOpen_ = false;
     long listSig_ = -1;
     uint32_t waveId_ = 0;   // which sample the screen's waveform shows
     int lastFolder_[kNumTracks] = {0, 0, 0, 0};
@@ -1705,6 +1778,11 @@ private:
         }
     }
     int lastEdit_ = 0;
+    // After a track or page change the screen's values are re-sent a few at a time, and the MPC
+    // echoes each one back a moment later. For this long (~0.15 s) a change from the MPC to the
+    // view or the knobs is taken as such an echo, never as a press or a turn.
+    static constexpr int kSettleBlocks = 52;
+    int settle_ = 0, knobSettle_ = 0;
     float lastView_[kNumView] = {};
     int grainTick_ = 0, grainEdit_ = -1;
     int lastPage_[kNumTracks] = {-1, -1, -1, -1};

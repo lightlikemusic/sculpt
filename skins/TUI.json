@@ -717,15 +717,7 @@
      "key": "browseFolder",
      "value": {
       "version": 2,
-      "actions": [
-       {
-        "version": 1,
-        "onAction": "Mouse Down",
-        "handler": "Q-Link",
-        "handleName": "Data",
-        "additionalData": ""
-       }
-      ],
+      "actions": [],
       "backgroundData": {
        "version": 1,
        "focussed": {
@@ -739,36 +731,9 @@
         "image": ""
        }
       },
-      "ignoreMousePresses": false,
+      "ignoreMousePresses": true,
       "disableCoarseDataWheel": true,
       "componentsData": [
-       {
-        "version": 2,
-        "componentData": {
-         "version": 1,
-         "name": "focus",
-         "type": "Focus",
-         "data": {
-          "version": 1,
-          "backgroundColour": "14ffffff",
-          "outlineColour": "ff5fdcf3",
-          "backgroundInset": 1.0,
-          "outlineThickness": 1.0
-         }
-        },
-        "handle remapping": {
-         "version": 1,
-         "map": []
-        },
-        "bounds": {
-         "version": 1,
-         "acceptsHWFocus": "No",
-         "showWhenDataModelInvalid": "Show",
-         "whenVisible": "WhenFocussed",
-         "boundsType": "Absolute",
-         "bounds": "0 0 360 80"
-        }
-       },
        {
         "version": 2,
         "componentData": {
@@ -803,7 +768,7 @@
          "showWhenDataModelInvalid": "Show",
          "whenVisible": "Always",
          "boundsType": "Absolute",
-         "bounds": "0 4 360 20"
+         "bounds": "0 4 416 20"
         }
        },
        {
@@ -840,7 +805,7 @@
          "showWhenDataModelInvalid": "Show",
          "whenVisible": "Always",
          "boundsType": "Absolute",
-         "bounds": "0 0 360 80"
+         "bounds": "0 0 416 80"
         }
        }
       ]
@@ -850,15 +815,7 @@
      "key": "browseFile",
      "value": {
       "version": 2,
-      "actions": [
-       {
-        "version": 1,
-        "onAction": "Mouse Down",
-        "handler": "Q-Link",
-        "handleName": "Data",
-        "additionalData": ""
-       }
-      ],
+      "actions": [],
       "backgroundData": {
        "version": 1,
        "focussed": {
@@ -872,36 +829,9 @@
         "image": ""
        }
       },
-      "ignoreMousePresses": false,
+      "ignoreMousePresses": true,
       "disableCoarseDataWheel": true,
       "componentsData": [
-       {
-        "version": 2,
-        "componentData": {
-         "version": 1,
-         "name": "focus",
-         "type": "Focus",
-         "data": {
-          "version": 1,
-          "backgroundColour": "14ffffff",
-          "outlineColour": "ff5fdcf3",
-          "backgroundInset": 1.0,
-          "outlineThickness": 1.0
-         }
-        },
-        "handle remapping": {
-         "version": 1,
-         "map": []
-        },
-        "bounds": {
-         "version": 1,
-         "acceptsHWFocus": "No",
-         "showWhenDataModelInvalid": "Show",
-         "whenVisible": "WhenFocussed",
-         "boundsType": "Absolute",
-         "bounds": "0 0 410 80"
-        }
-       },
        {
         "version": 2,
         "componentData": {
@@ -936,7 +866,7 @@
          "showWhenDataModelInvalid": "Show",
          "whenVisible": "Always",
          "boundsType": "Absolute",
-         "bounds": "0 4 410 20"
+         "bounds": "0 4 448 20"
         }
        },
        {
@@ -973,7 +903,7 @@
          "showWhenDataModelInvalid": "Show",
          "whenVisible": "Always",
          "boundsType": "Absolute",
-         "bounds": "0 0 410 80"
+         "bounds": "0 0 448 80"
         }
        }
       ]
@@ -21878,35 +21808,6 @@
        "version": 2,
        "componentData": {
         "version": 1,
-        "name": "FOLDER prev",
-        "type": "Button",
-        "data": {
-         "version": 2,
-         "onImage": "br_prev_0.png",
-         "offImage": "br_prev_0.png",
-         "buttonId": 1,
-         "numButtonsInGroup": 1,
-         "handleName": "Parameter 281",
-         "gestureBehaviour": "Instant"
-        }
-       },
-       "handle remapping": {
-        "version": 1,
-        "map": []
-       },
-       "bounds": {
-        "version": 1,
-        "acceptsHWFocus": "Yes",
-        "showWhenDataModelInvalid": "Show",
-        "whenVisible": "Always",
-        "boundsType": "Absolute",
-        "bounds": "182 16 60 72"
-       }
-      },
-      {
-       "version": 2,
-       "componentData": {
-        "version": 1,
         "name": "FOLDER value",
         "type": "browseFolder",
         "data": {
@@ -21925,69 +21826,11 @@
        },
        "bounds": {
         "version": 1,
-        "acceptsHWFocus": "Yes",
+        "acceptsHWFocus": "No",
         "showWhenDataModelInvalid": "Show",
         "whenVisible": "Always",
         "boundsType": "Absolute",
-        "bounds": "250 12 360 80"
-       }
-      },
-      {
-       "version": 2,
-       "componentData": {
-        "version": 1,
-        "name": "FOLDER next",
-        "type": "Button",
-        "data": {
-         "version": 2,
-         "onImage": "br_next_0.png",
-         "offImage": "br_next_0.png",
-         "buttonId": 1,
-         "numButtonsInGroup": 1,
-         "handleName": "Parameter 282",
-         "gestureBehaviour": "Instant"
-        }
-       },
-       "handle remapping": {
-        "version": 1,
-        "map": []
-       },
-       "bounds": {
-        "version": 1,
-        "acceptsHWFocus": "Yes",
-        "showWhenDataModelInvalid": "Show",
-        "whenVisible": "Always",
-        "boundsType": "Absolute",
-        "bounds": "618 16 60 72"
-       }
-      },
-      {
-       "version": 2,
-       "componentData": {
-        "version": 1,
-        "name": "FILE prev",
-        "type": "Button",
-        "data": {
-         "version": 2,
-         "onImage": "br_prev_0.png",
-         "offImage": "br_prev_0.png",
-         "buttonId": 1,
-         "numButtonsInGroup": 1,
-         "handleName": "Parameter 283",
-         "gestureBehaviour": "Instant"
-        }
-       },
-       "handle remapping": {
-        "version": 1,
-        "map": []
-       },
-       "bounds": {
-        "version": 1,
-        "acceptsHWFocus": "Yes",
-        "showWhenDataModelInvalid": "Show",
-        "whenVisible": "Always",
-        "boundsType": "Absolute",
-        "bounds": "698 16 60 72"
+        "bounds": "190 12 416 80"
        }
       },
       {
@@ -22012,40 +21855,11 @@
        },
        "bounds": {
         "version": 1,
-        "acceptsHWFocus": "Yes",
+        "acceptsHWFocus": "No",
         "showWhenDataModelInvalid": "Show",
         "whenVisible": "Always",
         "boundsType": "Absolute",
-        "bounds": "766 12 410 80"
-       }
-      },
-      {
-       "version": 2,
-       "componentData": {
-        "version": 1,
-        "name": "FILE next",
-        "type": "Button",
-        "data": {
-         "version": 2,
-         "onImage": "br_next_0.png",
-         "offImage": "br_next_0.png",
-         "buttonId": 1,
-         "numButtonsInGroup": 1,
-         "handleName": "Parameter 284",
-         "gestureBehaviour": "Instant"
-        }
-       },
-       "handle remapping": {
-        "version": 1,
-        "map": []
-       },
-       "bounds": {
-        "version": 1,
-        "acceptsHWFocus": "Yes",
-        "showWhenDataModelInvalid": "Show",
-        "whenVisible": "Always",
-        "boundsType": "Absolute",
-        "bounds": "1184 16 60 72"
+        "bounds": "642 12 448 80"
        }
       },
       {
@@ -22949,6 +22763,38 @@
         "whenVisible": "Always",
         "boundsType": "Absolute",
         "bounds": "1175 351 70 239",
+        "additionalInvalidatingHandles": [
+         "IndexedEnabling/1/2/Parameter 313"
+        ]
+       }
+      },
+      {
+       "version": 2,
+       "componentData": {
+        "version": 1,
+        "name": "load",
+        "type": "Button",
+        "data": {
+         "version": 2,
+         "onImage": "br_load_1.png",
+         "offImage": "br_load_0.png",
+         "buttonId": 1,
+         "numButtonsInGroup": 1,
+         "handleName": "Parameter 280",
+         "gestureBehaviour": "Instant"
+        }
+       },
+       "handle remapping": {
+        "version": 1,
+        "map": []
+       },
+       "bounds": {
+        "version": 2,
+        "acceptsHWFocus": "Yes",
+        "showWhenDataModelInvalid": "Show",
+        "whenVisible": "Always",
+        "boundsType": "Absolute",
+        "bounds": "1112 16 136 72",
         "additionalInvalidatingHandles": [
          "IndexedEnabling/1/2/Parameter 313"
         ]

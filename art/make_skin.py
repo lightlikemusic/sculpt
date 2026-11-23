@@ -173,10 +173,11 @@ BR_Y, BR_H = DY + 4, 80   # the browser row: in the header's space, twice the ol
 SRC_TOP = VY + 48
 SRC_H = WAVE_H - 44
 LIST_KEY = (VX, BR_Y + 4, 136, 72)           # BROWSE: opens the list browser (files load by themselves)
-FOLDER_PLATE = (VX + 146, BR_Y, 504, BR_H)
-FILE_PLATE = (VX + 662, BR_Y, 554, BR_H)
+FOLDER_PLATE = (VX + 146, BR_Y, 440, BR_H)
+FILE_PLATE = (VX + 598, BR_Y, 472, BR_H)
+LOAD_KEY = (VX + VW - 136, BR_Y + 4, 136, 72)  # LOAD: only while the list is open
 STEP_KEY = (60, 72)                          # the < > keys in the browser row
-NAME_X = STEP_KEY[0] + 12                    # where the caption and name start inside a plate
+NAME_X = 12                                  # where the caption and name start inside a plate
 
 
 ROOT = 56   # view setting 56 is Root (not in the 48-setting track block; no longer on screen)
@@ -579,6 +580,7 @@ def make_source(peaks_by_sample):
         files["prev_%d" % lit] = save(small_key(STEP_KEY[0], STEP_KEY[1], lit, "<"), "br_prev_%d.png" % lit)
         files["next_%d" % lit] = save(small_key(STEP_KEY[0], STEP_KEY[1], lit, ">"), "br_next_%d.png" % lit)
         files["list_%d" % lit] = save(small_key(LIST_KEY[2], LIST_KEY[3], lit, "BROWSE", 24), "br_list_%d.png" % lit)
+        files["load_%d" % lit] = save(small_key(LOAD_KEY[2], LOAD_KEY[3], lit, "LOAD", 24), "br_load_%d.png" % lit)
     step_h = LIST_ROWS * ROW_H // 2 - 6
     files["up"] = save(small_key(STEP_W - 6, step_h, False, "up"), "br_up.png")
     files["down"] = save(small_key(STEP_W - 6, step_h, False, "down"), "br_down.png")
@@ -1205,19 +1207,16 @@ def visual_entries(m, t, files):
 
 
 def browse_slot(w, h):
-    """A focusable value (folder or file name): touching it banks the Q-Links to the browser row."""
-    focus = entry("focus", "Focus", {"version": 1, "backgroundColour": "14ffffff", "outlineColour": "ff5fdcf3",
-                                     "backgroundInset": 1.0, "outlineThickness": 1.0}, (0, 0, w, h), visible="WhenFocussed")
-    # the caption ("FOLDER" / "FILE") is the setting's own name: a Name label draws inside a control
+    """A folder or file name, to read only: the caption ("FOLDER" / "FILE") and the name."""
+    # the caption is the setting's own name: a Name label draws inside a control
     caption = label_value("caption", "Data", (0, 4, w, 20), 15, MUTED, "horizontallyCentred verticallyCentred", "Regular")
     caption["componentData"]["data"]["type"] = "Name"
     caption["componentData"]["data"]["textStyle"]["case"] = "Upper Case"
     value = label_value("value", "Data", (0, 0, w, h), 32, "ffffffff", "horizontallyCentred verticallyCentred", "SemiBold")
-    return {"version": 2,
-            "actions": [{"version": 1, "onAction": "Mouse Down", "handler": "Q-Link", "handleName": "Data", "additionalData": ""}],
+    return {"version": 2, "actions": [],
             "backgroundData": {"version": 1, "focussed": {"version": 1, "colour": "0", "image": ""},
                                "unfocussed": {"version": 1, "colour": "0", "image": ""}},
-            "ignoreMousePresses": False, "disableCoarseDataWheel": True, "componentsData": [focus, caption, value]}
+            "ignoreMousePresses": True, "disableCoarseDataWheel": True, "componentsData": [caption, value]}
 
 
 FOLDER_SLOT_W = FOLDER_PLATE[2] - 2 * NAME_X
@@ -1240,18 +1239,16 @@ def list_row(w):
 
 
 def browser_entries(t, files):
+    """The browser row: BROWSE, then the folder and file of the sound playing (to read only; the
+    list, opened with BROWSE, is where you pick and LOAD)."""
     E = []
-    kw, kh = STEP_KEY
-    for (x, y, w, h), caption, prev, nxt, val, slot in (
-            (FOLDER_PLATE, "FOLDER", B_FOLD_PREV, B_FOLD_NEXT, B_FOLDER, "browseFolder"),
-            (FILE_PLATE, "FILE", B_FILE_PREV, B_FILE_NEXT, B_FILE, "browseFile")):
-        E.append(button("%s prev" % caption, files["prev_0"], files["prev_0"],
-                        "Parameter %d" % vbidx(prev), (x + 4, y + 4, kw, kh)))
-        E.append(entry("%s value" % caption, slot, {"version": 1, "handleName": "Data"},
-                       (x + NAME_X, y + SLOT_Y, w - 2 * NAME_X, SLOT_H),
-                       remap={"Data": "Parameter %d" % vbidx(val)}, focus="Yes"))
-        E.append(button("%s next" % caption, files["next_0"], files["next_0"],
-                        "Parameter %d" % vbidx(nxt), (x + w - kw - 4, y + 4, kw, kh)))
+    for (x, y, w, h), caption, val, slot in ((FOLDER_PLATE, "FOLDER", B_FOLDER, "browseFolder"),
+                                            (FILE_PLATE, "FILE", B_FILE, "browseFile")):
+        e = entry("%s value" % caption, slot, {"version": 1, "handleName": "Data"},
+                  (x + NAME_X, y + SLOT_Y, w - 2 * NAME_X, SLOT_H),
+                  remap={"Data": "Parameter %d" % vbidx(val)})
+        e["bounds"]["acceptsHWFocus"] = "No"
+        E.append(e)
     lx, ly, lw, lh = LIST_KEY
     E.append(button("list", files["list_1"], files["list_0"], "Parameter %d" % BROWSER_OPEN, (lx, ly, lw, lh)))
     return E
@@ -1261,6 +1258,8 @@ def list_entries(files):
     """The open list browser: drawn last on the Source tab so it covers everything under the browser row."""
     E = []
     open_ = enabled(1, 2, BROWSER_OPEN)
+    lk = button("load", files["load_1"], files["load_0"], "Parameter %d" % vbidx(B_LOAD), LOAD_KEY)
+    lk["bounds"] = bounds(LOAD_KEY, focus="Yes", invalidating=open_)
     E.append(image("list panel", files["panel"], (VX, LIST_TOP - 2, VW, LIST_BOTTOM - LIST_TOP + 2), invalidating=open_))
     step_h = LIST_ROWS * ROW_H // 2 - 6
     steps = ((B_FOLD_PREV, B_FOLD_NEXT), (B_FILE_PREV, B_FILE_NEXT))
@@ -1278,6 +1277,7 @@ def list_entries(files):
                          (kx, LIST_TOP + 4 + j * (step_h + 8), STEP_W - 6, step_h))
             key["bounds"] = bounds((kx, LIST_TOP + 4 + j * (step_h + 8), STEP_W - 6, step_h), focus="Yes", invalidating=open_)
             E.append(key)
+    E.append(lk)
     return E
 
 
