@@ -20686,7 +20686,7 @@
          "imageType": "FilmStrip",
          "colour": "0",
          "image": "col_crush.png",
-         "numFrames": 16,
+         "numFrames": 8,
          "handleName": "Parameter 256"
         }
        },
@@ -20717,7 +20717,7 @@
          "imageType": "FilmStrip",
          "colour": "0",
          "image": "col_noise.png",
-         "numFrames": 16,
+         "numFrames": 8,
          "handleName": "Parameter 258"
         }
        },
@@ -20748,7 +20748,7 @@
          "imageType": "FilmStrip",
          "colour": "0",
          "image": "col_drive.png",
-         "numFrames": 16,
+         "numFrames": 8,
          "handleName": "Parameter 254"
         }
        },

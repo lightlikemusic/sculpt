@@ -120,6 +120,21 @@ struct Svf
 };
 
 inline float gFor(float hz, float sr) { return std::tan(kPi * clamp(hz, 10.0f, 0.45f * sr) / sr); }
+// Cheap stand-ins for sin and tanh where exactness doesn't matter (slow LFOs, a soft limit):
+// they cost a few multiplies instead of a library call, which matters on the MPC's processor.
+inline float fastSin01(double phase)   // sin(2 pi phase), phase in 0..1 (any value wraps)
+{
+    float x = (float)(phase - std::floor(phase)) * 2.0f - 1.0f;     // -1..1 = -pi..pi
+    const float y = 4.0f * x * (1.0f - std::fabs(x));                // parabola
+    return -(0.775f * y + 0.225f * y * std::fabs(y));                // refined (error < 0.1%)
+}
+inline float fastTanh(float x)
+{
+    if (x > 3.0f) return 1.0f;
+    if (x < -3.0f) return -1.0f;
+    const float x2 = x * x;
+    return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+}
 inline float onePoleA(float hz, float sr) { return 1.0f - std::exp(-2.0f * kPi * clamp(hz, 5.0f, 0.45f * sr) / sr); }
 inline float smoothstep(float e) { return e * e * (3.0f - 2.0f * e); }
 
@@ -233,7 +248,7 @@ public:
         compEnv_ = 0.0f; compGain_ = 1.0f; compCount_ = 0;
         crushHold_ = 0.0f; crushCount_ = 0;
         delL_.reset(); delR_.reset();
-        swell_.reset(); chorusLine_.reset(); chPhase_ = 0.0; chMix_ = 0.0f; chDepthS_ = 0.0f; revMixS_ = -1.0f; dMixS_ = 0.0f;
+        swell_.reset(); chorusLine_.reset(); chPhase_ = 0.0; chMix_ = 0.0f; chDepthS_ = 0.0f; revMixS_ = -1.0f; dMixS_ = 0.0f; revOdd_ = false; revHeld_ = revCurL_ = revCurR_ = revPrevL_ = revPrevR_ = 0.0f;
         dampL_ = dampR_ = hpL_ = hpR_ = 0.0f;
         for (int i = 0; i < kLines; ++i)
         {
@@ -968,6 +983,12 @@ private:
     // ---------------------------------------------------------------- Filter
     void setupFilter(const TrackParams& p)
     {
+        if (!p.filterOn) return;
+        {   // the bands only need working out again when a setting they depend on changes
+            const float key[8] = {p.cutoff, p.reso, p.fDecayMs, (float)p.fPitch, (float)p.slope, p.fTone, (float)p.scale, sr_};
+            if (std::memcmp(key, filterKey_, sizeof key) == 0) return;
+            std::memcpy(filterKey_, key, sizeof key);
+        }
         // A bank of up to 32 resonant bands, each tuned to a note of the Scale (moved by Pitch),
         // spread from C1 to E9. Cutoff, Slope (low / band / high), Reso and Tone set how loud each
         // band is. With a short Decay the bands are wide and overlap, so the bank passes the sound
@@ -1015,7 +1036,7 @@ private:
             band_[b].tick(x, lp, bp);
             y += bp * bandK_[b] * bandW_[b];
         }
-        y = std::tanh(y);   // ringing bands can pile up: keep them in bounds, warmly
+        y = fastTanh(y);   // ringing bands can pile up: keep them in bounds, warmly
         return x + p.fWet * (y - x);
     }
 
@@ -1083,9 +1104,15 @@ private:
         const float t = p.sTone;
         dampA_ = onePoleA(t < 0.0f ? 16000.0f * std::pow(2.0f, t * 4.0f) : 16000.0f, sr_);
         hpA_ = onePoleA(t > 0.0f ? 20.0f * std::pow(2.0f, t * 7.0f) : 20.0f, sr_);
+        {   // the rest only needs working out again when a setting it depends on changes
+            const float key[6] = {p.sTone, p.size, p.sDecayMs, (float)p.revType, p.freeze ? 1.0f : 0.0f, sr_};
+            if (std::memcmp(key, spaceKey_, sizeof key) == 0) return;
+            std::memcpy(spaceKey_, key, sizeof key);
+        }
+        const float rs = 0.5f * sr_;   // the reverb's own (half) sample rate
         // The reverb: Size scales every line from a small room (x0.5) to a vast space (x4);
         // Decay sets how long the tail takes to fade by 60 dB.
-        const float scale = kMinScale * std::pow(kMaxScale / kMinScale, p.size) * sr_ / 44100.0f;
+        const float scale = kMinScale * std::pow(kMaxScale / kMinScale, p.size) * rs / 44100.0f;
         const float t60 = std::fmax(0.1f, p.sDecayMs * 0.001f);
         // Tone: below centre the highs die away much sooner (dark); above centre they last nearly
         // as long as the mids, and the lows fade sooner instead (thin)
@@ -1095,7 +1122,7 @@ private:
         const float lowRatio = (p.sTone > 0.0f ? 1.0f - 0.75f * p.sTone : 1.0f) * ty.lo;
         inG_ = ty.inG; loopG_ = ty.loopG;
         revGain_ = kRevGain[clamp(p.revType, 0, kNumRevTypes - 1)];
-        swellLen_ = ty.attackSec * sr_;
+        swellLen_ = ty.attackSec * rs;
         for (int i = 0; i < kLines; ++i)
         {
             const float spreadLen = kTankMean + (kTankLen[i] - kTankMean) * ty.spread;
@@ -1103,19 +1130,19 @@ private:
             loopApLen_[i] = kLoopApLen[i] * scale;
             // the gain per trip round the loop, for its whole length (line + in-loop smear)
             const float pass = tankLen_[i] + loopApLen_[i];
-            tankG_[i] = p.freeze ? 0.99995f : std::pow(10.0f, -3.0f * pass / (t60 * sr_));
+            tankG_[i] = p.freeze ? 0.99995f : std::pow(10.0f, -3.0f * pass / (t60 * rs));
             // highs and lows fade at their own pace: per trip they lose exactly what makes their
             // tail hfRatio (or lowRatio) times as long as the mids'
-            hiG_[i] = p.freeze ? 1.0f : std::pow(10.0f, -3.0f * pass / (t60 * hfRatio * sr_)) / tankG_[i];
-            loG_[i] = p.freeze ? 1.0f : std::pow(10.0f, -3.0f * pass / (t60 * lowRatio * sr_)) / tankG_[i];
+            hiG_[i] = p.freeze ? 1.0f : std::pow(10.0f, -3.0f * pass / (t60 * hfRatio * rs)) / tankG_[i];
+            loG_[i] = p.freeze ? 1.0f : std::pow(10.0f, -3.0f * pass / (t60 * lowRatio * rs)) / tankG_[i];
         }
-        const float inScale = std::fmin(scale, 2.0f * sr_ / 44100.0f) * ty.inLen;   // longer = slower attack
+        const float inScale = std::fmin(scale, 2.0f * rs / 44100.0f) * ty.inLen;   // longer = slower attack
         for (int i = 0; i < 4; ++i) inApLen_[i] = kInApLen[i] * inScale;
         // the slow drift of every line: deeper in bigger spaces, and as deep as the type wants
-        modDepth_ = std::fmin(kModMaxSec, (0.0004f + 0.0026f * p.size) * ty.mod) * sr_;
+        modDepth_ = std::fmin(kModMaxSec, (0.0004f + 0.0026f * p.size) * ty.mod) * rs;
         // the band edges for the highs and lows (above): 2.5 kHz and 200 Hz
-        hiA_ = onePoleA(2500.0f, sr_);
-        loA_ = onePoleA(200.0f, sr_);
+        hiA_ = onePoleA(2500.0f, rs);
+        loA_ = onePoleA(200.0f, rs);
     }
 
     void spaceTick(float x, const TrackParams& p, float& outL, float& outR)
@@ -1131,8 +1158,8 @@ private:
         {
             const double tau = 6.283185307179586;
             const float base = 0.012f * sr_, swing = (0.0005f + 0.0075f * chDepthS_) * sr_;
-            const float lfoL = (float)std::sin(tau * chPhase_);
-            const float lfoR = (float)std::sin(tau * (chPhase_ + 0.5 * p.chWidth));
+            const float lfoL = fastSin01(chPhase_);
+            const float lfoR = fastSin01(chPhase_ + 0.5 * p.chWidth);
             const float wl = chorusLine_.readLinear(base + swing * lfoL), wr = chorusLine_.readLinear(base + swing * lfoR);
             // Mix: the dry sound and the chorus each stay at full level up to the middle, then the
             // other one fades out (as the reverb's Mix does)
@@ -1167,6 +1194,13 @@ private:
             // Lengths glide when Size changes, so the tail bends rather than clicks.
             auto glide = [](float& v, float target) { v = v < 0.0f ? target : v + 0.0004f * (target - v); };
             float in = p.freeze ? 0.0f : (x + 0.5f * (dl + dr)) * p.reverb;
+            // The reverb runs at half the sample rate (every other sample), which halves its cost;
+            // its tail is darkened above 2.5 kHz anyway, so nothing audible is lost.
+            revOdd_ = !revOdd_;
+            if (revOdd_) revHeld_ = in;
+            else
+            {
+            in = 0.5f * (in + revHeld_);
             // the swell: the sound arrives as copies spread over the type's attack time, getting
             // louder towards the end, so it fades into the space instead of starting at once
             swell_.write(in);
@@ -1186,20 +1220,19 @@ private:
                 in = d - inG_ * v;
             }
             float o[kLines];
-            const double tau = 6.283185307179586;
             for (int i = 0; i < kLines; ++i)
             {
                 glide(tankLenS_[i], tankLen_[i]);
                 glide(loopApLenS_[i], loopApLen_[i]);
                 // each line drifts slowly at its own rate: no metallic ringing, a lush moving tail
-                const float mod = modDepth_ * (0.5f + 0.5f * (float)std::sin(tau * lfoPh_[i]));
-                lfoPh_[i] += kLfoHz[i] / sr_;
+                const float mod = modDepth_ * (0.5f + 0.5f * fastSin01(lfoPh_[i]));
+                lfoPh_[i] += kLfoHz[i] * 2.0 / sr_;
                 if (lfoPh_[i] >= 1.0) lfoPh_[i] -= 1.0;
                 float y = tank_[i].readAllpass(tankLenS_[i] + mod);   // allpass interpolation: no dulling, pass after pass
                 damp_[i] += hiA_ * (y - damp_[i]);       // below 2.5 kHz
                 lowCut_[i] += loA_ * (y - lowCut_[i]);   // below 200 Hz
                 y = lowCut_[i] * loG_[i] + (damp_[i] - lowCut_[i]) + (y - damp_[i]) * hiG_[i];
-                const float d = loopAp_[i].readAllpass(loopApLenS_[i]);  // smear inside the loop:
+                const float d = loopAp_[i].readInt((int)(loopApLenS_[i] + 0.5f));  // smear inside the loop:
                 const float v = y + loopG_ * d;                          // it grows denser as it fades
                 loopAp_[i].write(v);
                 o[i] = (d - loopG_ * v) * tankG_[i];
@@ -1219,6 +1252,11 @@ private:
             const float lvl = (p.freeze ? std::fmax(p.reverb, 0.35f) : 1.0f) * 0.42f * revGainS_;
             for (int i = 0; i < kLines; ++i) { wl += o[i] * sL[i]; wr += o[i] * sR[i]; }
             wl *= lvl; wr *= lvl;
+            revPrevL_ = revCurL_; revCurL_ = wl; revPrevR_ = revCurR_; revCurR_ = wr;
+            }
+            // back to the full rate: halfway between the last two outputs, then the newest
+            wl = revOdd_ ? revCurL_ : 0.5f * (revCurL_ + revPrevL_);
+            wr = revOdd_ ? revCurR_ : 0.5f * (revCurR_ + revPrevR_);
             // keep running a while after the send closes, so the tail rings out
             reverbAwake_ = reverbOn ? (int)(t60Samples(p) + sr_) : reverbAwake_ - 1;
         }
@@ -1322,6 +1360,7 @@ private:
     Svf band_[kBands];
     float bandK_[kBands] = {}, bandW_[kBands] = {}, bandTarget_[kBands] = {};
     int nBands_ = 0;
+    float filterKey_[8] = {-1, -1, -1, -1, -1, -1, -1, -1}, spaceKey_[6] = {-1, -1, -1, -1, -1, -1};
     float fTiltLp_ = 0.0f, fTiltA_ = 0.1f;
 
     // color
@@ -1341,6 +1380,8 @@ private:
     double lfoPh_[kLines] = {};
     float modDepth_ = 0.0f, hiA_ = 0.0f, loA_ = 0.0f, hiG_[kLines] = {}, loG_[kLines] = {};
     int reverbAwake_ = 0;
+    bool revOdd_ = false;
+    float revHeld_ = 0.0f, revCurL_ = 0.0f, revCurR_ = 0.0f, revPrevL_ = 0.0f, revPrevR_ = 0.0f;
     float revMixS_ = -1.0f, dMixS_ = 0.0f;
     float inG_ = 0.7f, loopG_ = 0.5f;   // the type's smear gains
     mpc::dsp::DelayLine swell_;          // the type's slow attack

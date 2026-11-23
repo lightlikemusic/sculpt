@@ -789,7 +789,7 @@ def make_filter():
 COLOR_TOP, COLOR_H = 48, 196   # the Color picture's band inside the visual (under the browser row)
 
 
-COLOR_FRAMES = 16   # pattern frames per layer (picked by the setting's value)
+COLOR_FRAMES = 8    # pattern frames per layer (picked by the setting's value); few, so the page loads quickly
 COLOR_CELL = 4      # the pixel grid: one dot per 4 x 4 px
 
 

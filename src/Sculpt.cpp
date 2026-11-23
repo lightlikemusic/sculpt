@@ -553,7 +553,7 @@ private:
     // hundreds of values at once (the view, the waveforms, the meters): sending them all in one
     // block can stall the audio and click. So on the audio thread they queue (each index once)
     // and go out at most kNotifyPerBlock per block, oldest first. Anywhere else they go at once.
-    static constexpr int kNotifyPerBlock = 24;
+    static constexpr int kNotifyPerBlock = 8;   // a track switch sends ~100 updates: spread over ~35 ms
     void notifyLater(int index)
     {
         if (nq_.empty() || std::this_thread::get_id() != audioThread_.load(std::memory_order_relaxed))
@@ -1202,7 +1202,8 @@ private:
             if (loader_.takeDirty(t)) notifyTrackParam(t, idx(t, pSample));
         }
         refreshList(lib);
-        publishWave();
+        if (mpc::clamp(getInt(kPage0), 0, kModules - 1) == 0) publishWave();   // only Source shows it
+        else waveIds_[0] = 0;   // redrawn fresh when Source comes back
     }
 
     // What track t plays: its file, or else its built-in loop in Sculpt's Content folder.
