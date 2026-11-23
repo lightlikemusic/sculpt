@@ -94,6 +94,7 @@ struct TrackParams
     // Module switches and per-module toggles
     bool srcOn = true, grainOn = false, filterOn = true, colorOn = false, spaceOn = true;
     bool sync = false, lock = false, freeze = false;
+    bool syncTape = false;   // SYNC fits a free loop to the beat by its speed (tape), not by beat steps
     // Mix: the track's gain into the stereo output after Space (volume, pan, mute and solo combined)
     float mixL = 1.0f, mixR = 1.0f;
 };
@@ -232,7 +233,7 @@ public:
         compEnv_ = 0.0f; compGain_ = 1.0f; compCount_ = 0;
         crushHold_ = 0.0f; crushCount_ = 0;
         delL_.reset(); delR_.reset();
-        swell_.reset(); chorusLine_.reset(); chPhase_ = 0.0; chMix_ = 0.0f; chDepthS_ = 0.0f; revMixS_ = -1.0f;
+        swell_.reset(); chorusLine_.reset(); chPhase_ = 0.0; chMix_ = 0.0f; chDepthS_ = 0.0f; revMixS_ = -1.0f; dMixS_ = 0.0f;
         dampL_ = dampR_ = hpL_ = hpR_ = 0.0f;
         for (int i = 0; i < kLines; ++i)
         {
@@ -334,7 +335,7 @@ public:
             Region want;
             want.start = std::fmin(std::floor((double)p.start * N), (double)N - 64.0);
             want.len = std::fmax(64.0, std::fmin((double)p.length * N, (double)N - want.start));
-            if (p.sync)
+            if (p.sync && !p.syncTape)
             {   // SYNC: Start and Length move in beat steps (the sample counts as a whole number of
                 // beats), so the loop always plays at the one speed the tempo sets and Length never
                 // changes its pitch. Length goes 1/16 beat, 1/8, ... up to the whole sample.
@@ -387,7 +388,14 @@ public:
 
         // the running loop: its region spans a whole number of beats (a power of two), so it stays
         // in time at any tempo; Speed plays it faster or slower by whole factors of that
-        const double beats = std::fmax(1.0 / 16.0, regionLen / ((double)N / sampleBeats(smp)));   // exact: Length is in beat steps
+        double beats;
+        if (!p.syncTape) beats = std::fmax(1.0 / 16.0, regionLen / ((double)N / sampleBeats(smp)));   // exact: Length is in beat steps
+        else
+        {   // tape: the region spans the nearest power-of-two beats (at 120 BPM); it plays faster or
+            // slower to fill them, so Length and Speed change its pitch
+            beats = std::pow(2.0, std::round(std::log2(std::fmax(1e-3, regionLen / smp.rate * 2.0))));
+            beats = std::fmin(64.0, std::fmax(1.0, beats));
+        }
         const double speedAbs = std::fabs((double)p.speed);
         // The loop plays continuously and is steered gently towards the host's song position, so a
         // coarse or jittery position never makes it jump. It only jumps (with a short crossfade) when
@@ -1126,7 +1134,9 @@ private:
             const float lfoL = (float)std::sin(tau * chPhase_);
             const float lfoR = (float)std::sin(tau * (chPhase_ + 0.5 * p.chWidth));
             const float wl = chorusLine_.readLinear(base + swing * lfoL), wr = chorusLine_.readLinear(base + swing * lfoR);
-            const float dry = 1.0f - 0.5f * chMix_, wet = 0.5f * chMix_ * 1.2f;
+            // Mix: the dry sound and the chorus each stay at full level up to the middle, then the
+            // other one fades out (as the reverb's Mix does)
+            const float dry = std::fmin(1.0f, 2.0f * (1.0f - chMix_)), wet = std::fmin(1.0f, 2.0f * chMix_) * 0.8f;
             cl = x * dry + wl * wet;
             cr = x * dry + wr * wet;
         }
@@ -1134,7 +1144,8 @@ private:
         if (chPhase_ >= 1.0) chPhase_ -= 1.0;
 
         float dl = 0.0f, dr = 0.0f;
-        if (p.delay > 0.001f)
+        dMixS_ += 0.0015f * (p.delay - dMixS_);
+        if (p.delay > 0.001f || dMixS_ > 0.001f)
         {
             delayTime_ += 0.0005f * (delayTarget_ - delayTime_);
             float rl = delL_.readLinear(delayTime_), rr = delR_.readLinear(delayTime_);
@@ -1142,7 +1153,7 @@ private:
             hpL_ += hpA_ * (dampL_ - hpL_); hpR_ += hpA_ * (dampR_ - hpR_);
             rl = dampL_ - hpL_; rr = dampR_ - hpR_;
             const float fb = p.feedback * 0.95f, s = p.spread;
-            const float in = x * p.delay;
+            const float in = x;
             delL_.write(mpc::dsp::softClip(in + fb * ((1.0f - s) * rl + s * rr)));
             delR_.write(mpc::dsp::softClip(in * (1.0f - s) + fb * ((1.0f - s) * rr + s * rl)));
             dl = rl; dr = rr;
@@ -1215,8 +1226,10 @@ private:
         // up to the middle, then the other one fades out; it glides, so turning it never clicks
         revMixS_ = revMixS_ < 0.0f ? p.revMix : revMixS_ + 0.0015f * (p.revMix - revMixS_);
         const float dryG = std::fmin(1.0f, 2.0f * (1.0f - revMixS_)), wetG = std::fmin(1.0f, 2.0f * revMixS_);
-        outL = (cl + dl) * dryG + wl * wetG;
-        outR = (cr + dr) * dryG + wr * wetG;
+        // delay Mix: the same shape, between the (chorused) dry sound and the echoes
+        const float dDry = std::fmin(1.0f, 2.0f * (1.0f - dMixS_)), dWet = std::fmin(1.0f, 2.0f * dMixS_);
+        outL = (cl * dDry + dl * dWet) * dryG + wl * wetG;
+        outR = (cr * dDry + dr * dWet) * dryG + wr * wetG;
     }
 
     // The reverb: 8 lines (lengths at 44.1 kHz and Size x1, chosen so their echoes never line up),
@@ -1328,7 +1341,7 @@ private:
     double lfoPh_[kLines] = {};
     float modDepth_ = 0.0f, hiA_ = 0.0f, loA_ = 0.0f, hiG_[kLines] = {}, loG_[kLines] = {};
     int reverbAwake_ = 0;
-    float revMixS_ = -1.0f;
+    float revMixS_ = -1.0f, dMixS_ = 0.0f;
     float inG_ = 0.7f, loopG_ = 0.5f;   // the type's smear gains
     mpc::dsp::DelayLine swell_;          // the type's slow attack
     float swellLen_ = 0.0f;

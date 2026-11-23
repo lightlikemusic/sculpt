@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <cctype>
 #include <string>
 #include <thread>
 #include <vector>
@@ -66,7 +67,31 @@ inline bool isWavName(const std::string& n)
     return l.size() > 4 && l.compare(l.size() - 4, 4, ".wav") == 0;
 }
 
-inline bool lessNoCase(const std::string& a, const std::string& b) { return lower(a) < lower(b); }
+// Names in order, ignoring case, with numbers compared as numbers ("2 Tape" before "10 Club").
+inline bool lessNoCase(const std::string& a, const std::string& b)
+{
+    const std::string x = lower(a), y = lower(b);
+    size_t i = 0, j = 0;
+    while (i < x.size() && j < y.size())
+    {
+        if (std::isdigit((unsigned char)x[i]) && std::isdigit((unsigned char)y[j]))
+        {
+            size_t i2 = i, j2 = j;
+            while (i2 < x.size() && std::isdigit((unsigned char)x[i2])) ++i2;
+            while (j2 < y.size() && std::isdigit((unsigned char)y[j2])) ++j2;
+            std::string nx = x.substr(i, i2 - i), ny = y.substr(j, j2 - j);
+            nx.erase(0, std::min(nx.find_first_not_of('0'), nx.size() - 1));
+            ny.erase(0, std::min(ny.find_first_not_of('0'), ny.size() - 1));
+            if (nx.size() != ny.size()) return nx.size() < ny.size();
+            if (nx != ny) return nx < ny;
+            i = i2; j = j2;
+            continue;
+        }
+        if (x[i] != y[j]) return x[i] < y[j];
+        ++i; ++j;
+    }
+    return x.size() - i < y.size() - j;
+}
 
 // ---------------------------------------------------------------------------------------- Scanner
 class Scanner

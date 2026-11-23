@@ -189,7 +189,7 @@ REV_TYPES = ["Hall", "Plate", "Bloom", "Cloud", "Echoes", "Canyon", "Ripple", "V
 # (title, cells: (label, offset, bipolar, steps or 0), on-switch offset, toggle (offset, label) or None)
 MODULES = [
     ("SOURCE", [("START", START, False, 0), ("LENGTH", 2, False, 0), ("ROTATE", 1, False, 0), ("SPEED", 0, True, 0),
-                ("LOOP", 6, False, 3), ("FADE", 5, False, 0), ("PITCH", 3, True, 49), ("LEVEL", 4, False, 0)],
+                ("LOOP", 6, False, 5), ("FADE", 5, False, 0), ("PITCH", 3, True, 49), ("LEVEL", 4, False, 0)],
      40, (45, "SYNC")),
     # Grain: Grainbloom's engine (Mode picks how grains are chosen; Size is a tempo division in the rhythmic modes)
     ("GRAIN", [("MODE", 14, False, 7), ("PITCH", 8, True, 49), ("SIZE", 10, False, 0), ("DENSITY", 9, False, 0),
@@ -202,13 +202,13 @@ MODULES = [
                ("NOISE", 28, False, 0), ("N DECAY", 29, False, 0), ("N TONE", 30, False, 0), ("WET", 31, False, 0)],
      43, None),
     # Space is three columns, one per effect (see COLUMNS): chorus, delay, reverb, four settings each
-    ("SPACE", [("AMOUNT", CHORUS, False, 0), ("RATE", CHORUS + 1, False, 0), ("DEPTH", CHORUS + 2, False, 0),
-               ("WIDTH", CHORUS + 3, False, 0),
-               ("SEND", 32, False, 0), ("TIME", 33, False, 0), ("FEEDBACK", 36, False, 0), ("SPREAD", 37, False, 0),
+    ("SPACE", [("RATE", CHORUS + 1, False, 0), ("DEPTH", CHORUS + 2, False, 0), ("WIDTH", CHORUS + 3, False, 0),
+               ("MIX", CHORUS, False, 0),
+               ("TIME", 33, False, 0), ("FEEDBACK", 36, False, 0), ("SPREAD", 37, False, 0), ("MIX", 32, False, 0),
                ("TYPE", REVTYPE, False, 8), ("SIZE", 35, False, 0), ("DECAY", 39, False, 0), ("MIX", REVMIX, False, 0)],
      44, (47, "FREEZE")),
 ]
-CHOICES = {6: ["Off", "Fwd", "Ping"], 7: ["Kalimba", "Tape", "Choir", "Glass"],
+CHOICES = {6: ["Off", "Fwd", "Ping", "Fwd Tape", "Ping Tape"], 7: ["Kalimba", "Tape", "Haze", "Glass", "Drone", "Analog Pad", "Synth Arp", "Air Pad", "Dark Drone", "Club Kick"],
            14: ["Collage", "Cloud", "Stutter", "Shimmer", "Shatter", "Arpeggio", "Cascade"], 20: ["Low", "Band", "High"],
            22: ["Chrom", "Major", "Minor", "Penta"]}
 BOOL_OFFSETS = [40, 41, 42, 43, 44, 45, 46, 47]
@@ -789,49 +789,55 @@ def make_filter():
 COLOR_TOP, COLOR_H = 48, 196   # the Color picture's band inside the visual (under the browser row)
 
 
-def make_color():
-    L = 9
-    k_drive = 12.0
+COLOR_FRAMES = 16   # pattern frames per layer (picked by the setting's value)
+COLOR_CELL = 4      # the pixel grid: one dot per 4 x 4 px
 
-    def traces(kind, colour_fn, width):
-        img = canvas(VW, VH)
-        d = ImageDraw.Draw(img)
-        for j in range(L):
-            y0 = COLOR_TOP + COLOR_H * (0.12 + 0.76 * j / (L - 1))
-            base = 0.35 + 0.65 * abs(math.sin(j * 1.9))
-            amp = COLOR_H * 0.075 * base
-            ph = j * 0.45
-            pts = []
-            for x in range(0, VW + 1, 2):
-                xi = x
-                if kind == "crush":
-                    xi = (x // 14) * 14
-                s = math.sin(xi / VW * math.pi * 4 + ph)
-                if kind == "drive":
-                    s = math.tanh(s * k_drive) / math.tanh(k_drive)
-                if kind == "crush":
-                    s = round(s * 3) / 3
-                pts.append((x * SS, (y0 - s * amp) * SS))
-            d.line(pts, fill=colour_fn(j), width=int(width * SS))
-        return down(img)
 
-    art = traces("clean", lambda j: rgba(WHITE_N, 0.22), 1)
-    files = {
-        "drive": save(traces("drive", lambda j: rgba(WHITE_N, 0.4 + 0.55 * (1 - abs(j - 4) / 5)), 2), "col_drive.png"),
-        "crush": save(traces("crush", lambda j: rgba(WHITE_N, 0.75), 1.5), "col_crush.png"),
-    }
-    # noise: speckle revealed from the bottom
-    rnd = random.Random(12)
-    img = canvas(VW, VH)
+def color_fade(x, W):
+    """Full brightness in the middle, fading to nothing at the left and right edges."""
+    e = min(1.0, abs(x - W / 2) / (W / 2))
+    t = max(0.0, (e - 0.25) / 0.75)
+    return 1.0 - t * t * (3 - 2 * t)
+
+
+def color_layer(kind, val, rnd):
+    """One layer of the Color picture. Two sets of half circles spread from two points on the bottom
+    edge and overlap, like waves from two sources; where their rings cross they make an
+    interference pattern. Drive sets the left rings' spacing, Crush the right rings' spacing and
+    how blocky their pixels are, and Noise scatters loose pixels over both."""
+    W, H = VW, COLOR_H
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    for _ in range(1400):
-        x, y = rnd.random() * VW, COLOR_TOP + rnd.random() * COLOR_H
-        d.rectangle([x * SS, y * SS, (x + 1.6) * SS, (y + 1.6) * SS],
-                    fill=rgba(WHITE_N, 0.25 + 0.5 * rnd.random()))
-    files["noise"] = save(down(img), "col_noise.png")
-    a2 = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
-    a2.alpha_composite(art, (0, 0))
-    return a2, files
+    if kind == "noise":   # loose pixels, more of them with more Noise
+        for _ in range(int(1400 * val)):
+            x = rnd.randrange(0, W // COLOR_CELL) * COLOR_CELL
+            y = rnd.randrange(0, H // COLOR_CELL) * COLOR_CELL
+            d.rectangle([x, y, x + COLOR_CELL - 2, y + COLOR_CELL - 2], fill=(236, 236, 236, int((70 + 110 * rnd.random()) * color_fade(x, W))))
+        return img
+    left = kind == "drive"
+    sx = W * (0.36 if left else 0.64)          # the two sources, on the bottom edge
+    wave = (36.0 - 14.0 * val) if left else (32.0 - 8.0 * val)
+    cell = COLOR_CELL if left else COLOR_CELL + 2 * int(round(val * 2))   # Crush: bigger, blockier pixels
+    a = 235 if left else 175
+    for cy in range(0, H, cell):
+        for cx in range(0, W, cell):
+            r = math.hypot(cx + cell / 2 - sx, H - (cy + cell / 2))
+            if r < wave * 0.5:
+                continue
+            k = r / wave
+            if abs(k - round(k)) * wave < cell * 0.5:   # on a ring
+                d.rectangle([cx, cy, cx + cell - 2, cy + cell - 2], fill=(236, 236, 236, int(a * color_fade(cx + cell / 2, W))))
+    return img
+
+
+def make_color():
+    art = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
+    files = {}
+    for kind in ("drive", "noise", "crush"):
+        rnd = random.Random(7)
+        frames = [color_layer(kind, i / (COLOR_FRAMES - 1), rnd) for i in range(COLOR_FRAMES)]
+        files[kind] = strip(frames, "col_%s.png" % kind)
+    return art, files
 
 
 # ---- Space: small wireframe projections (after the mockup's View)
@@ -1157,9 +1163,9 @@ def visual_entries(m, t, files):
         ra = thumb("rotate", files["rotate"], "Parameter %d" % ROTATE_AT, (VX - 13, SRC_TOP - 6, VW + 26, SRC_H + 14))
         ra["bounds"] = bounds((VX - 13, SRC_TOP - 6, VW + 26, SRC_H + 14), invalidating=["NonZero/Parameter %d" % ROTATE_AT])
         E.append(ra)
-        for k in range(3):
-            E.append(image("loop %d" % k, files["loop_%d" % k], (VX + VW - 74, SRC_TOP + 2, 70, 22),
-                           invalidating=enabled(k, 3, vidx(6))))
+        for k in range(5):   # the tape modes show the same glyph as Fwd / Ping
+            E.append(image("loop %d" % k, files["loop_%d" % (k if k < 3 else k - 2)], (VX + VW - 74, SRC_TOP + 2, 70, 22),
+                           invalidating=enabled(k, 5, vidx(6))))
     elif m == 1:  # GRAIN: the sample's waveform as pixels, solid where grains pick, dissolving around it
         rows = 2 * (PIX_HEIGHTS - 1) + 1
         for c in range(PIX_COLS):
@@ -1185,9 +1191,12 @@ def visual_entries(m, t, files):
             E.append(image("slope %d" % k, files["slope_%d" % k], (VX + VW - 94, SPEC_TOP - 4, 90, 40),
                            invalidating=enabled(k, 3, vidx(20))))
     elif m == 3:  # COLOR
-        E.append(reveal("noise", files["noise"], P(28), (VX, VY, VW, VH), direction="Vertical"))
-        E.append(reveal("drive", files["drive"], P(24), (VX, VY, VW, VH)))
-        E.append(reveal("crush", files["crush"], "Invert/" + P(26), (VX, VY, VW, VH), rtype="Inverted"))
+        # three layers of pixel contour lines, each picked by its setting; their overlap makes the
+        # interference pattern
+        rect = (VX, VY + COLOR_TOP, VW, COLOR_H)
+        E.append(film("crush", files["crush"], COLOR_FRAMES, P(26), rect))
+        E.append(film("noise", files["noise"], COLOR_FRAMES, P(28), rect))
+        E.append(film("drive", files["drive"], COLOR_FRAMES, P(24), rect))
     # SPACE has no picture: its three effect columns fill the screen
     # visuals never take hardware focus
     for e in E:
@@ -1550,7 +1559,7 @@ def main():
         if f.endswith(".png") or f.endswith(".json"):
             os.remove(os.path.join(OUT, f))
 
-    names = ["1 Kalimba", "2 Tape", "3 Choir", "4 Glass"]
+    names = ["1 Kalimba", "2 Tape", "3 Haze", "4 Glass"]
     peaks = [read_peaks(os.path.join(SAMPLES, n + ".wav"), 404) for n in names]
 
     files = []

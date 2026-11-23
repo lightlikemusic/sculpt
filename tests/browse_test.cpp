@@ -62,7 +62,7 @@ int main()
         Rig g;
         const int vFolder = viewParam(kPerTrack + bFolder), vFile = viewParam(kPerTrack + bFile);
         CHECK(g.waitFor([&] { return g.text(vFile) == "1 Kalimba"; }), "track 1 shows its loop (%s)", g.text(vFile).c_str());
-        const char* want[4] = {"1 Kalimba", "2 Tape", "3 Choir", "4 Glass"};
+        const char* want[4] = {"1 Kalimba", "2 Tape", "3 Haze", "4 Glass"};
         for (int t = 1; t < 4; ++t)
         {
             g.p.set(kEditTrack, (float)t); g.blocks(3);
@@ -72,11 +72,11 @@ int main()
         // load the 3rd file of the Sculpt folder on track 2, go away and come back
         g.p.set(kEditTrack, 1.0f); g.blocks(3);
         g.press(bidx(1, bFileNext));
-        g.waitFor([&] { return g.p.getBool(bidx(1, bHasFile)) && g.text(vFile) == "3 Choir"; });
+        g.waitFor([&] { return g.p.getBool(bidx(1, bHasFile)) && g.text(vFile) == "3 Haze"; });
         g.p.set(kEditTrack, 0.0f); g.blocks(3);
         CHECK(g.text(vFile) == "1 Kalimba", "back on track 1: 1 Kalimba (%s)", g.text(vFile).c_str());
         g.p.set(kEditTrack, 1.0f); g.blocks(3);
-        CHECK(g.text(vFile) == "3 Choir" && g.p.getBool(bidx(1, bHasFile)), "and track 2 still shows its file, 3 Choir (%s)", g.text(vFile).c_str());
+        CHECK(g.text(vFile) == "3 Haze" && g.p.getBool(bidx(1, bHasFile)), "and track 2 still shows its file, 3 Haze (%s)", g.text(vFile).c_str());
         g.p.set(kEditTrack, 0.0f); g.blocks(3);
         // on the Space page, the CHORUS column's first knob is the picked track's chorus amount
         g.p.set(kPage0 + 0, 4.0f); g.blocks(3);
@@ -648,7 +648,7 @@ int main()
         CHECK(g.text(kFolderRow0 + kListMid - 1).empty() && g.text(kFolderRow0 + 0).empty(), "rows above the first folder are empty");
         CHECK(g.text(kFolderRow0 + kListMid + 1) == "lib / Breaks" && g.text(kFolderRow0 + kListMid + 2) == "lib / Breaks / Old",
               "rows below list the next folders (\"%s\", \"%s\")", g.text(kFolderRow0 + kListMid + 1).c_str(), g.text(kFolderRow0 + kListMid + 2).c_str());
-        CHECK(g.text(kFileRow0 + kListMid) == "1 Kalimba" && g.text(kFileRow0 + kListMid + 1) == "2 Tape" && g.text(kFileRow0 + kListMid + 2) == "3 Choir",
+        CHECK(g.text(kFileRow0 + kListMid) == "1 Kalimba" && g.text(kFileRow0 + kListMid + 1) == "2 Tape" && g.text(kFileRow0 + kListMid + 2) == "3 Haze",
               "file rows list the folder's files");
         g.press(kFolderRow0 + kListMid + 2);   // a row that is not highlighted: nothing happens
         CHECK(g.text(kFolderRow0 + kListMid) == "Sculpt", "tapping a row that is not highlighted does nothing");

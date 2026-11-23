@@ -208,9 +208,10 @@ inline int cellTarget(int t, int m, int k)
         if (m == 0 && k == 0) return kStartBase + t;
         return idx(t, kBlock[m][k]);
     }
-    // Space: chorus (4), delay (4), reverb (4)
-    if (k < 4) return cidx(t, k);
-    static const int kDelay[4] = {pDelay, pTime, pFeedback, pSpread};
+    // Space: chorus (4), delay (4), reverb (4); each column ends with its Mix
+    static const int kChorus[4] = {cRate, cDepth, cWidth, cAmount};
+    if (k < 4) return cidx(t, kChorus[k]);
+    static const int kDelay[4] = {pTime, pFeedback, pSpread, pDelay};
     if (k < 8) return idx(t, kDelay[k - 4]);
     if (k == 8) return kRevTypeBase + t;
     if (k == 9) return idx(t, pSize);
@@ -220,8 +221,12 @@ inline int cellTarget(int t, int m, int k)
 
 // Set on threads whose value formatting must not count as "the MPC is drawing this" (the debug log).
 
-const char* const kSampleFiles[4] = {"Samples/1 Kalimba.wav", "Samples/2 Tape.wav",
-                                     "Samples/3 Choir.wav", "Samples/4 Glass.wav"};
+// The built-in loops (Content/Samples), in the order of the SAMPLE setting.
+constexpr int kBuiltins = 10;
+const char* const kSampleFiles[kBuiltins] = {"Samples/1 Kalimba.wav", "Samples/2 Tape.wav", "Samples/3 Haze.wav",
+                                             "Samples/4 Glass.wav", "Samples/5 Drone.wav", "Samples/6 Analog Pad.wav",
+                                             "Samples/7 Synth Arp.wav", "Samples/8 Air Pad.wav", "Samples/9 Dark Drone.wav",
+                                             "Samples/10 Club Kick.wav"};
 
 } // namespace
 
@@ -251,7 +256,7 @@ public:
         // the waveform columns start out showing track 1's loop, so a project saved before any audio
         // has run already holds the right picture
         for (int t = 0; t < kNumTracks; ++t)   // each track's waveform starts as its built-in loop
-            if (t == 0) for (int c = 0; c < kWaveCols; ++c) setNormalised(kWave0 + c, samples_[mpc::clamp(getInt(idx(t, pSample)), 0, 3)].peaks[c]);
+            if (t == 0) for (int c = 0; c < kWaveCols; ++c) setNormalised(kWave0 + c, samples_[mpc::clamp(getInt(idx(t, pSample)), 0, kBuiltins - 1)].peaks[c]);
         scanner_.start();            // find WAV files on the drives in the background
         loader_.start(&scanner_);
         hostSets_ = std::vector<std::atomic<uint32_t>>((size_t)numParams());
@@ -348,7 +353,7 @@ public:
             if (mi < ctx.numMidiEvents) end = mpc::clamp(ctx.midi[mi].sampleOffset, frame + 1, n);
             tr.ppq = ctx.transport.ppqPos + (double)frame * ppqPerFrame;
             for (int t = 0; t < kNumTracks; ++t)
-                tracks_[t].process(tp_[t], active_[t] ? *active_[t] : samples_[mpc::clamp(tp_[t].sample, 0, 3)],
+                tracks_[t].process(tp_[t], active_[t] ? *active_[t] : samples_[mpc::clamp(tp_[t].sample, 0, kBuiltins - 1)],
                                    bend_, bpm, bpmValid, tr,
                                    outL + frame, outR + frame, end - frame);
             frame = end;
@@ -376,6 +381,14 @@ public:
         flushNotifications(kNotifyPerBlock);
     }
 
+    // SYNC plays the loop at whole-octave speeds only (x0.25 .. x2, either way), so it always
+    // fits the bar: any other speed would drift against the beat.
+    static float syncSpeed(float s)
+    {
+        const float a = std::exp2(std::round(std::log2(std::fmax(std::fabs(s), 0.25f))));
+        return s < 0.0f ? -a : a;
+    }
+
     bool formatValue(int index, float plain, std::string& out) override
     {
         if (index >= kKnob0 && index < kTabEnd)
@@ -396,10 +409,19 @@ public:
                 out = mpc::dsp::divisionName(grainDivision(param(index).toNormalised(plain)));
                 return true;
             }
-            // Length in SYNC: beat steps, shown as note values and bars
-            if (index == idx(t, pLength) && getBool(idx(t, pSync)))
+            // Speed in SYNC: whole octaves (x0.25, x0.5, x1, x2, backwards too)
+            if (index == idx(t, pSpeed) && getBool(idx(t, pSync)) && getInt(idx(t, pLoop)) < 3)
             {
-                const sculpt::Sample* smp = active_[t] ? active_[t] : &samples_[mpc::clamp(getInt(idx(t, pSample)), 0, 3)];
+                char b[16];
+                const float v = syncSpeed(plain);
+                std::snprintf(b, sizeof b, std::fabs(v) < 1.0f ? "%+.2fx" : "%+.0fx", v);
+                out = b;
+                return true;
+            }
+            // Length in SYNC: beat steps, shown as note values and bars
+            if (index == idx(t, pLength) && getBool(idx(t, pSync)) && getInt(idx(t, pLoop)) < 3)
+            {
+                const sculpt::Sample* smp = active_[t] ? active_[t] : &samples_[mpc::clamp(getInt(idx(t, pSample)), 0, kBuiltins - 1)];
                 if (smp && smp->size() >= 64)
                 {
                     const double sb = sculpt::Track::sampleBeats(*smp);
@@ -653,7 +675,7 @@ private:
         {
             std::vector<Param> ps;
             chorusParams("view_", "", ps);
-            const char* caption[cCount] = {"Amount", "Rate", "Depth", "Width"};   // the boxes' captions
+            const char* caption[cCount] = {"Mix", "Rate", "Depth", "Width"};   // the boxes' captions
             for (int c = 0; c < cCount; ++c) { ps[(size_t)c].name = caption[c]; addParam(ps[(size_t)c]); }
         }
         // reverb Mix per track (0 = dry only, 50 = both at full level, 100 = reverb only), then the view's
@@ -819,7 +841,7 @@ private:
     void publishPixels(int t)
     {
         const float step = 0.4f / (kPixHeights * kPixDissolve);
-        const sculpt::Sample* src = active_[t] ? active_[t] : &samples_[mpc::clamp(tp_[t].sample, 0, 3)];
+        const sculpt::Sample* src = active_[t] ? active_[t] : &samples_[mpc::clamp(tp_[t].sample, 0, kBuiltins - 1)];
         unsigned char marks[kPixCols];
         const int marked = tp_[t].grainOn ? tracks_[t].grainSampleMarks(tp_[t], marks, kPixCols) : 0;
         int dist[kPixCols];
@@ -930,6 +952,39 @@ private:
     // The 12 Q-Link knobs (track 1's set) stand for the cells of the page on screen, for the picked
     // track. When the page or the track changes they take the new cells' values; after that a knob
     // moving moves its setting, and a setting moving (the view, automation, presets) moves its knob.
+    // The positions (normalised) a stepped setting can take, in order; 0 for a smooth one.
+    int stepPositions(int t, int target, float* pos) const
+    {
+        const mpc::Param& pr = param(target);
+        const bool grid = getBool(idx(t, pSync)) && getInt(idx(t, pLoop)) < 3;
+        if (target == idx(t, pLength) && grid)
+        {   // SYNC Length: 1/16 beat .. the whole sample, in doublings
+            const sculpt::Sample* smp = active_[t] ? active_[t] : &samples_[mpc::clamp(getInt(idx(t, pSample)), 0, kBuiltins - 1)];
+            const int K = (int)std::lround(std::log2(sculpt::Track::sampleBeats(*smp) * 16.0));
+            for (int k = 0; k <= K; ++k) pos[k] = pr.toNormalised(std::fmax(1.0f, 100.0f * (float)k / (float)K));
+            return K + 1;
+        }
+        if (target == idx(t, pSpeed) && grid)
+        {
+            static const float sp[8] = {-2.0f, -1.0f, -0.5f, -0.25f, 0.25f, 0.5f, 1.0f, 2.0f};
+            for (int k = 0; k < 8; ++k) pos[k] = pr.toNormalised(sp[k]);
+            return 8;
+        }
+        if (target == idx(t, pGSize) && grainRhythmic(getInt(idx(t, pGMode))))
+        {
+            const int n = mpc::dsp::kNumDivisions;
+            for (int k = 0; k < n; ++k) pos[k] = (float)k / (float)(n - 1);
+            return n;
+        }
+        int n = 0;
+        if (pr.kind == mpc::Param::Kind::Choice) n = (int)pr.choices.size();
+        else if (pr.kind == mpc::Param::Kind::Bool) n = 2;
+        else if (pr.kind == mpc::Param::Kind::Int) n = (int)std::lround(pr.max - pr.min) + 1;
+        if (n < 2 || n > 128) return 0;
+        for (int k = 0; k < n; ++k) pos[k] = (float)k / (float)(n - 1);
+        return n;
+    }
+
     void syncKnobs()
     {
         const int et = screenTrack(), page = mpc::clamp(getInt(kPage0), 0, kModules - 1);
@@ -947,9 +1002,26 @@ private:
                 lastKnob_[0][k] = lastKnobTarget_[0][k] = tv;
             }
             else if (kv != lastKnob_[0][k])
-            {   // turned on the screen or a Q-Link: move the setting
-                setNormalised(target, kv); notifyLater(target);
-                lastKnob_[0][k] = lastKnobTarget_[0][k] = kv;
+            {   // turned on the screen, the data wheel or a Q-Link: move the setting. A setting with
+                // steps (Loop, Mode, Slope, Scale, Length in beats...) moves at least one step for
+                // any turn, so each click of the wheel changes it.
+                float pos[128];
+                const int np = stepPositions(et, target, pos);
+                float nv = kv;
+                if (np >= 2)
+                {
+                    int cur = 0, near = 0;
+                    for (int j = 1; j < np; ++j)
+                    {
+                        if (std::fabs(pos[j] - tv) < std::fabs(pos[cur] - tv)) cur = j;
+                        if (std::fabs(pos[j] - kv) < std::fabs(pos[near] - kv)) near = j;
+                    }
+                    if (near == cur) near = mpc::clamp(cur + (kv > lastKnob_[0][k] ? 1 : -1), 0, np - 1);
+                    nv = pos[near];
+                    setNormalised(knob, nv); notifyLater(knob);
+                }
+                setNormalised(target, nv); notifyLater(target);
+                lastKnob_[0][k] = lastKnobTarget_[0][k] = nv;
             }
             else if (tv != lastKnobTarget_[0][k])
             {
@@ -1134,7 +1206,7 @@ private:
     }
 
     // What track t plays: its file, or else its built-in loop in Sculpt's Content folder.
-    std::string builtinPath(int t) const { return mpc::contentPath(kSampleFiles[mpc::clamp(getInt(idx(t, pSample)), 0, 3)]); }
+    std::string builtinPath(int t) const { return mpc::contentPath(kSampleFiles[mpc::clamp(getInt(idx(t, pSample)), 0, kBuiltins - 1)]); }
     std::string soundPath(int t)
     {
         const std::string p = active_[t] ? loader_.path(t) : std::string();
@@ -1170,7 +1242,7 @@ private:
     void publishWave()
     {   // the picked track's waveform, rewritten when its sound changes or another track is picked
         const int t = screenTrack();
-        const sculpt::Sample* src = active_[t] ? active_[t] : &samples_[mpc::clamp(tp_[t].sample, 0, 3)];
+        const sculpt::Sample* src = active_[t] ? active_[t] : &samples_[mpc::clamp(tp_[t].sample, 0, kBuiltins - 1)];
         const bool fresh = src->id != waveIds_[0];
         waveIds_[0] = src->id;
         for (int c = 0; c < kWaveCols; ++c)
@@ -1266,8 +1338,11 @@ private:
         I("pitch",  "Pitch",  -24, 24, 0, "st");                    // coarse transpose (also changes speed)
         F("level",  "Level",  0.0f, 100.0f, 80.0f, "%", 0);
         L("fade",   "Fade",   1.0f, 2000.0f, 8.0f, "ms", 0);        // fade at the region edges and on release
-        C("loop",   "Loop",   {"Off", "Fwd", "Ping"}, 1);
-        C("sample", "Sample", {"Kalimba", "Tape", "Choir", "Glass"}, t);
+        // Loop: Fwd / Ping keep SYNC on the beat grid (Start, Length and Speed in steps); Fwd Tape /
+        // Ping Tape let them move freely, and SYNC fits the loop to the beat by changing its speed
+        C("loop",   "Loop",   {"Off", "Fwd", "Ping", "Fwd Tape", "Ping Tape"}, 1);
+        C("sample", "Sample", {"Kalimba", "Tape", "Haze", "Glass", "Drone", "Analog Pad", "Synth Arp", "Air Pad",
+                               "Dark Drone", "Club Kick"}, t);
         // Grain (Grainbloom's engine): slices of the last few seconds of this track
         I("gpitch",  "G Pitch",   -24, 24, 0, "st");
         F("gdensity","G Density", 0.0f, 100.0f, 50.0f, "%", 0);     // overlap / gate / note / echo length
@@ -1296,7 +1371,7 @@ private:
         F("ntone",   "N Tone",  0.0f, 100.0f, 60.0f, "%", 0);
         F("cwet",    "C Wet",   0.0f, 100.0f, 100.0f, "%", 0);
         // Space
-        F("delay",    "Delay",    0.0f, 100.0f, 20.0f, "%", 0);     // delay send
+        F("delay",    "Delay",    0.0f, 100.0f, 20.0f, "%", 0);     // delay Mix (like the reverb's: 50 = both at full level)
         L("time",     "Time",     20.0f, 1500.0f, 375.0f, "ms", 0);
         F("reverb",   "Reverb",   0.0f, 100.0f, 100.0f, "%", 0);    // reverb send (off screen: Mix sets the level)
         F("size",     "Size",     0.0f, 100.0f, 60.0f, "%", 0);
@@ -1307,7 +1382,7 @@ private:
         // module switches
         B("src_on",    "Source On", true);
         B("grain_on",  "Grain On",  false);
-        B("filter_on", "Filter On", true);
+        B("filter_on", "Filter On", false);
         B("color_on",  "Color On",  false);
         B("space_on",  "Space On",  true);
         // per-module toggles
@@ -1326,8 +1401,10 @@ private:
         p.chDepth = get(cidx(t, cDepth)) * 0.01f; p.chWidth = get(cidx(t, cWidth)) * 0.01f;
         p.revMix = get(kRevMixBase + t) * 0.01f;
         p.revType = getInt(kRevTypeBase + t);
-        p.speed = f(pSpeed); p.rotate = f(pRotate) * 0.01f; p.length = f(pLength) * 0.01f; p.pitch = i(pPitch);
-        p.level = f(pLevel) * 0.01f; p.fadeMs = f(pFade); p.loop = i(pLoop); p.sample = i(pSample);
+        p.speed = f(pSpeed);
+        if (b(pSync) && i(pLoop) < 3) p.speed = syncSpeed(p.speed);   // SYNC: whole octaves, so the loop stays on the beat
+        p.rotate = f(pRotate) * 0.01f; p.length = f(pLength) * 0.01f; p.pitch = i(pPitch);
+        p.level = f(pLevel) * 0.01f; p.fadeMs = f(pFade); p.loop = i(pLoop); p.syncTape = p.loop >= 3; if (p.loop >= 3) p.loop -= 2; p.sample = i(pSample);
         p.gPitch = i(pGPitch); p.gDensity = f(pGDensity) * 0.01f; p.gSizeMs = f(pGSize); p.gSpread = f(pGSpread) * 0.01f;
         p.gReverse = f(pGReverse) * 0.01f; p.gFeedback = f(pGFeedback) * 0.01f; p.gMode = i(pGMode); p.gWet = f(pGWet) * 0.01f;
         p.gDivision = grainDivision(getNormalised(idx(t, pGSize)));
@@ -1374,7 +1451,7 @@ private:
     // Loops live in Content/Samples. If one is missing, a soft plucked tone stands in for it.
     void loadSamples()
     {
-        for (int s = 0; s < 4; ++s)
+        for (int s = 0; s < kBuiltins; ++s)
         {
             dsp::WavData w;
             sculpt::Sample& out = samples_[s];
@@ -1412,6 +1489,8 @@ private:
     {
         std::vector<float> v((size_t)numParams());
         for (int i = 0; i < numParams(); ++i) v[(size_t)i] = param(i).def;
+        for (const Edit& e : edits)   // a preset that sets a track's filter turns that Filter on (it is off by default)
+            if (e.track >= 0 && e.param >= pCutoff && e.param <= pFWet) v[(size_t)idx(e.track, pFilterOn)] = 1.0f;
         for (const Edit& e : edits)
         {
             if (e.track < 0) v[(size_t)e.param] = e.value;
@@ -1435,20 +1514,60 @@ private:
 
     void buildPrograms()
     {
+        // helpers for the settings outside the 48-per-track block
+        auto ST = [](int t, float pc) { return Edit{-1, kStartBase + t, pc}; };          // Start, %
+        auto RM = [](int t, float pc) { return Edit{-1, kRevMixBase + t, pc}; };         // reverb Mix, %
+        auto RT = [](int t, int type) { return Edit{-1, kRevTypeBase + t, (float)type}; };   // reverb Type
+        auto CH = [](int t, int c, float v) { return Edit{-1, cidx(t, c), v}; };         // chorus
+        enum { Kalimba, Tape, Haze, Glass, Drone, AnalogPad, SynthArp, AirPad, DarkDrone, ClubKick };
+        enum { Hall, Plate, Bloom, Cloud, Echoes, Canyon, Ripple, Vast };
+
         addPreset("Init", {});
+        // ---- the everyday set: one of each thing Sculpt does
+        addPreset("Four Loops", {
+            {0, pDelay, 25}, {0, pTime, 375}, {0, pFeedback, 35},
+            {1, pColorOn, 1}, {1, pDrive, 30}, {1, pComp, 40}, {1, pLevel, 70},
+            {2, pDelay, 10}, RM(2, 35), RT(2, Hall),
+            {3, pScale, 3}, {3, pSlope, 1}, {3, pCutoff, 2500}, {3, pFDecay, 600}, {3, pReso, 30}, RM(3, 30)});
+        addPreset("Club Night", {
+            {0, pSample, ClubKick}, {0, pSync, 1}, {0, pLevel, 90}, {0, pDelay, 0}, RM(0, 5),
+            {1, pSample, SynthArp}, {1, pSync, 1}, {1, pCutoff, 2400}, {1, pReso, 45}, {1, pSlope, 0}, {1, pFDecay, 80},
+            {1, pDelay, 30}, {1, pTime, 375}, {1, pFeedback, 45}, {1, pLevel, 70},
+            {2, pSample, AnalogPad}, {2, pSync, 1}, {2, pLevel, 55}, CH(2, cAmount, 40), RM(2, 30), RT(2, Plate),
+            {3, pSample, DarkDrone}, {3, pSync, 1}, {3, pLevel, 45}, {3, pDelay, 0}});
+        addPreset("Deep Drone", {
+            {0, pSample, Drone}, RM(0, 45), RT(0, Vast), {0, pSize, 90}, {0, pSDecay, 20000}, {0, pDelay, 0},
+            {1, pSample, DarkDrone}, {1, pLevel, 55}, CH(1, cAmount, 45), CH(1, cRate, 0.15f), RM(1, 35), RT(1, Canyon),
+            {2, pSample, AirPad}, {2, pLevel, 45}, {2, pGrainOn, 1}, {2, pGMode, 1}, {2, pGSize, 500}, {2, pGWet, 60}, RM(2, 50),
+            {3, pSample, Drone}, {3, pPitch, -12}, {3, pLevel, 40}});
+        addPreset("Analog Dreams", {
+            {0, pSample, AnalogPad}, CH(0, cAmount, 50), CH(0, cDepth, 60), RM(0, 30), RT(0, Plate),
+            {1, pSample, AirPad}, {1, pLevel, 55}, {1, pDelay, 35}, {1, pTime, 500}, {1, pFeedback, 50}, {1, pSpread, 100},
+            {2, pSample, SynthArp}, {2, pSpeed, 0.5f}, {2, pLevel, 50}, {2, pCutoff, 1800}, {2, pReso, 30},
+            {3, pSample, Kalimba}, {3, pLevel, 45}, {3, pGrainOn, 1}, {3, pGMode, 3}, {3, pGWet, 50}, RM(3, 40)});
+        addPreset("Ring Bells", {
+            {0, pSample, Glass}, {0, pSlope, 1}, {0, pScale, 1}, {0, pCutoff, 1500}, {0, pFDecay, 2500}, {0, pReso, 60}, RM(0, 30),
+            {1, pSample, Kalimba}, {1, pSlope, 0}, {1, pScale, 3}, {1, pCutoff, 2500}, {1, pFDecay, 1200}, {1, pReso, 40},
+            {2, pSample, Drone}, {2, pSlope, 2}, {2, pScale, 2}, {2, pCutoff, 600}, {2, pFDecay, 3000}, {2, pFWet, 80}, {2, pLevel, 50},
+            {3, pSample, AirPad}, {3, pLevel, 35}});
+        addPreset("Crushed Kit", {
+            {0, pSample, Tape}, {0, pColorOn, 1}, {0, pDrive, 70}, {0, pCrush, 60}, {0, pNoise, 30}, {0, pComp, 60}, {0, pDelay, 0},
+            {1, pSample, ClubKick}, {1, pSync, 1}, {1, pColorOn, 1}, {1, pDrive, 45}, {1, pComp, 50}, {1, pDelay, 0}, RM(1, 0),
+            {2, pSample, Tape}, {2, pSpeed, 0.5f}, {2, pColorOn, 1}, {2, pCrush, 80}, {2, pTilt, -40}, {2, pLevel, 55},
+            {3, pSample, SynthArp}, {3, pColorOn, 1}, {3, pCrush, 45}, {3, pDrive, 50}, {3, pLevel, 50}});
         addPreset("Glass Field", {
             {3, pGrainOn, 1}, {3, pGMode, 3}, {3, pGDensity, 60}, {3, pGSize, 260}, {3, pGSpread, 55}, {3, pGFeedback, 35}, {3, pGWet, 70},
-            {3, pReverb, 60}, {3, pSize, 90}, {3, pSDecay, 7000}, {3, pDelay, 30}, {3, pTime, 500},
-            {2, pSpeed, 0.5f}, {2, pLevel, 60}, {2, pCutoff, 2500}, {2, pReverb, 50},
+            RM(3, 30), {3, pSize, 90}, {3, pSDecay, 7000}, {3, pDelay, 30}, {3, pTime, 500},
+            {2, pSpeed, 0.5f}, {2, pLevel, 60}, {2, pCutoff, 2500}, RM(2, 25),
             {0, pSpeed, -1.0f}, {0, pReso, 55}, {0, pFDecay, 900}, {0, pCutoff, 1800},
             {1, pLevel, 0}});
         addPreset("Tape Garden", {
             {1, pColorOn, 1}, {1, pDrive, 55}, {1, pComp, 50}, {1, pCrush, 35}, {1, pTilt, -30}, {1, pNoise, 25},
-            {1, pReverb, 15}, {1, pSize, 30}, {1, pSync, 1},
-            {-1, kStartBase + 0, 50}, {0, pLength, 25}, {0, pLoop, 2}, {0, pCutoff, 3000}, {0, pDelay, 35}, {0, pSync, 1}});
-        addPreset("Choir Smear", {
+            RM(1, 8), {1, pSize, 30}, {1, pSync, 1},
+            ST(0, 50), {0, pLength, 25}, {0, pLoop, 2}, {0, pCutoff, 3000}, {0, pDelay, 35}, {0, pSync, 1}});
+        addPreset("Haze Smear", {
             {2, pGrainOn, 1}, {2, pGMode, 1}, {2, pGSize, 600}, {2, pGDensity, 70}, {2, pGSpread, 70}, {2, pGReverse, 40},
-            {2, pGFeedback, 30}, {2, pGWet, 100}, {2, pReverb, 70}, {2, pSDecay, 9000}, {2, pFade, 400},
+            {2, pGFeedback, 30}, {2, pGWet, 100}, RM(2, 35), {2, pSDecay, 9000}, {2, pFade, 400},
             {2, pCutoff, 4000}, {2, pReso, 40}, {2, pScale, 2}});
         addPreset("Pentatonic Rain", {
             {0, pGrainOn, 1}, {0, pGMode, 5}, {0, pGDensity, 55}, {0, pGSize, 60}, {0, pGSpread, 60}, {0, pGWet, 50},
@@ -1456,14 +1575,40 @@ private:
             {0, pDelay, 45}, {0, pFeedback, 60}, {0, pSpread, 100}, {0, pTime, 250}});
         addPreset("Night Bus", {
             {1, pSpeed, 0.5f}, {1, pColorOn, 1}, {1, pDrive, 40}, {1, pTilt, -50}, {1, pCrush, 20},
-            {1, pReverb, 40}, {1, pSize, 70}, {1, pSTone, -50},
+            RM(1, 20), {1, pSize, 70}, {1, pSTone, -50},
             {2, pSpeed, -0.5f}, {2, pLevel, 55}, {2, pCutoff, 1200},
-            {3, pSpeed, 0.25f}, {3, pReverb, 55}, {3, pSDecay, 10000}});
+            {3, pSpeed, 0.25f}, RM(3, 28), {3, pSDecay, 10000}});
+        // ---- experiments
+        addPreset("Frozen Sky", {
+            {0, pSample, AirPad}, {0, pFreeze, 1}, RM(0, 60), RT(0, Vast), {0, pSize, 100},
+            {1, pSample, Glass}, {1, pGrainOn, 1}, {1, pGMode, 6}, {1, pGFeedback, 60}, {1, pGWet, 80}, RM(1, 45), RT(1, Bloom),
+            {2, pSample, Haze}, {2, pSpeed, -0.5f}, {2, pLoop, 4}, {2, pLevel, 55},
+            {3, pSample, Drone}, {3, pPitch, -12}, {3, pLevel, 45}});
+        addPreset("Shatter Machine", {
+            {0, pSample, SynthArp}, {0, pSync, 1}, {0, pGrainOn, 1}, {0, pGMode, 4}, {0, pGWet, 100}, {0, pGFeedback, 50},
+            {1, pSample, ClubKick}, {1, pSync, 1}, {1, pGrainOn, 1}, {1, pGMode, 2}, {1, pGWet, 60}, {1, pDelay, 0},
+            {2, pSample, Tape}, {2, pSync, 1}, {2, pGrainOn, 1}, {2, pGMode, 0}, {2, pGWet, 80}, {2, pGReverse, 50},
+            {3, pSample, DarkDrone}, {3, pColorOn, 1}, {3, pCrush, 70}, {3, pLevel, 50}});
+        addPreset("Tape Warp", {
+            {0, pSample, Kalimba}, {0, pSync, 1}, {0, pLoop, 3}, {0, pLength, 37},
+            {1, pSample, Tape}, {1, pSync, 1}, {1, pLoop, 3}, {1, pLength, 62}, {1, pRotate, 25},
+            {2, pSample, Haze}, {2, pSync, 1}, {2, pLoop, 4}, {2, pLength, 70}, {2, pLevel, 55},
+            {3, pSample, Glass}, {3, pSync, 1}, {3, pLoop, 3}, {3, pLength, 23}, {3, pRotate, 50}, {3, pLevel, 50}});
+        addPreset("Spectral Ring", {
+            {0, pSample, Tape}, {0, pSlope, 1}, {0, pScale, 3}, {0, pCutoff, 800}, {0, pFDecay, 3500}, {0, pReso, 80},
+            {1, pSample, ClubKick}, {1, pSync, 1}, {1, pSlope, 0}, {1, pScale, 2}, {1, pCutoff, 400}, {1, pFDecay, 2000}, {1, pReso, 70},
+            {2, pSample, Drone}, {2, pSlope, 2}, {2, pScale, 1}, {2, pCutoff, 1200}, {2, pFDecay, 4000}, {2, pLevel, 50},
+            {3, pSample, AirPad}, {3, pLevel, 30}, RM(3, 50)});
+        addPreset("Backwards Cathedral", {
+            {0, pSample, Kalimba}, {0, pSpeed, -1.0f}, RM(0, 45), RT(0, Cloud), {0, pSDecay, 30000}, {0, pDelay, 30}, {0, pSpread, 100},
+            {1, pSample, Glass}, {1, pSpeed, -0.5f}, RM(1, 50), RT(1, Cloud), {1, pSDecay, 30000},
+            {2, pSample, Haze}, {2, pSpeed, -1.0f}, {2, pPitch, 12}, {2, pLevel, 50}, RM(2, 60),
+            {3, pSample, SynthArp}, {3, pSpeed, -1.0f}, {3, pGrainOn, 1}, {3, pGMode, 3}, {3, pLevel, 40}});
     }
 
     sculpt::Track tracks_[kNumTracks];
     sculpt::TrackParams tp_[kNumTracks];
-    sculpt::Sample samples_[4];
+    sculpt::Sample samples_[kBuiltins];
     // sample browser: the scanner is declared before the loader so the loader stops first
     sculpt::Scanner scanner_;
     sculpt::Loader loader_;

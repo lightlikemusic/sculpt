@@ -1429,7 +1429,9 @@
     "value": [
      "Off",
      "Fwd",
-     "Ping"
+     "Ping",
+     "Fwd Tape",
+     "Ping Tape"
     ]
    },
    {
@@ -1437,8 +1439,14 @@
     "value": [
      "Kalimba",
      "Tape",
-     "Choir",
-     "Glass"
+     "Haze",
+     "Glass",
+     "Drone",
+     "Analog Pad",
+     "Synth Arp",
+     "Air Pad",
+     "Dark Drone",
+     "Club Kick"
     ]
    },
    {
@@ -1531,7 +1539,9 @@
     "value": [
      "Off",
      "Fwd",
-     "Ping"
+     "Ping",
+     "Fwd Tape",
+     "Ping Tape"
     ]
    },
    {
@@ -1539,8 +1549,14 @@
     "value": [
      "Kalimba",
      "Tape",
-     "Choir",
-     "Glass"
+     "Haze",
+     "Glass",
+     "Drone",
+     "Analog Pad",
+     "Synth Arp",
+     "Air Pad",
+     "Dark Drone",
+     "Club Kick"
     ]
    },
    {
@@ -1633,7 +1649,9 @@
     "value": [
      "Off",
      "Fwd",
-     "Ping"
+     "Ping",
+     "Fwd Tape",
+     "Ping Tape"
     ]
    },
    {
@@ -1641,8 +1659,14 @@
     "value": [
      "Kalimba",
      "Tape",
-     "Choir",
-     "Glass"
+     "Haze",
+     "Glass",
+     "Drone",
+     "Analog Pad",
+     "Synth Arp",
+     "Air Pad",
+     "Dark Drone",
+     "Club Kick"
     ]
    },
    {
@@ -1735,7 +1759,9 @@
     "value": [
      "Off",
      "Fwd",
-     "Ping"
+     "Ping",
+     "Fwd Tape",
+     "Ping Tape"
     ]
    },
    {
@@ -1743,8 +1769,14 @@
     "value": [
      "Kalimba",
      "Tape",
-     "Choir",
-     "Glass"
+     "Haze",
+     "Glass",
+     "Drone",
+     "Analog Pad",
+     "Synth Arp",
+     "Air Pad",
+     "Dark Drone",
+     "Club Kick"
     ]
    },
    {
@@ -2105,7 +2137,9 @@
     "value": [
      "Off",
      "Fwd",
-     "Ping"
+     "Ping",
+     "Fwd Tape",
+     "Ping Tape"
     ]
    },
    {
@@ -2113,8 +2147,14 @@
     "value": [
      "Kalimba",
      "Tape",
-     "Choir",
-     "Glass"
+     "Haze",
+     "Glass",
+     "Drone",
+     "Analog Pad",
+     "Synth Arp",
+     "Air Pad",
+     "Dark Drone",
+     "Club Kick"
     ]
    },
    {
@@ -11084,7 +11124,7 @@
         "boundsType": "Absolute",
         "bounds": "1174 102 70 22",
         "additionalInvalidatingHandles": [
-         "IndexedEnabling/0/3/Parameter 236",
+         "IndexedEnabling/0/5/Parameter 236",
          "IndexedEnabling/0/5/Parameter 947"
         ]
        }
@@ -11114,7 +11154,7 @@
         "boundsType": "Absolute",
         "bounds": "1174 102 70 22",
         "additionalInvalidatingHandles": [
-         "IndexedEnabling/1/3/Parameter 236",
+         "IndexedEnabling/1/5/Parameter 236",
          "IndexedEnabling/0/5/Parameter 947"
         ]
        }
@@ -11144,7 +11184,67 @@
         "boundsType": "Absolute",
         "bounds": "1174 102 70 22",
         "additionalInvalidatingHandles": [
-         "IndexedEnabling/2/3/Parameter 236",
+         "IndexedEnabling/2/5/Parameter 236",
+         "IndexedEnabling/0/5/Parameter 947"
+        ]
+       }
+      },
+      {
+       "version": 2,
+       "componentData": {
+        "version": 1,
+        "name": "loop 3",
+        "type": "Image",
+        "data": {
+         "version": 2,
+         "imageType": "Regular",
+         "colour": "0",
+         "image": "src_loop_1.png"
+        }
+       },
+       "handle remapping": {
+        "version": 1,
+        "map": []
+       },
+       "bounds": {
+        "version": 2,
+        "acceptsHWFocus": "No",
+        "showWhenDataModelInvalid": "Show",
+        "whenVisible": "Always",
+        "boundsType": "Absolute",
+        "bounds": "1174 102 70 22",
+        "additionalInvalidatingHandles": [
+         "IndexedEnabling/3/5/Parameter 236",
+         "IndexedEnabling/0/5/Parameter 947"
+        ]
+       }
+      },
+      {
+       "version": 2,
+       "componentData": {
+        "version": 1,
+        "name": "loop 4",
+        "type": "Image",
+        "data": {
+         "version": 2,
+         "imageType": "Regular",
+         "colour": "0",
+         "image": "src_loop_2.png"
+        }
+       },
+       "handle remapping": {
+        "version": 1,
+        "map": []
+       },
+       "bounds": {
+        "version": 2,
+        "acceptsHWFocus": "No",
+        "showWhenDataModelInvalid": "Show",
+        "whenVisible": "Always",
+        "boundsType": "Absolute",
+        "bounds": "1174 102 70 22",
+        "additionalInvalidatingHandles": [
+         "IndexedEnabling/4/5/Parameter 236",
          "IndexedEnabling/0/5/Parameter 947"
         ]
        }
@@ -20579,16 +20679,45 @@
        "version": 2,
        "componentData": {
         "version": 1,
-        "name": "noise",
-        "type": "Slider",
+        "name": "crush",
+        "type": "Image",
         "data": {
-         "version": 4,
-         "sliderType": "TrackAndThumb",
-         "direction": "Vertical",
-         "thumbImage": "",
-         "thumbTrackVisible": false,
-         "revealedImage": "col_noise.png",
-         "revealType": "Normal",
+         "version": 2,
+         "imageType": "FilmStrip",
+         "colour": "0",
+         "image": "col_crush.png",
+         "numFrames": 16,
+         "handleName": "Parameter 256"
+        }
+       },
+       "handle remapping": {
+        "version": 1,
+        "map": []
+       },
+       "bounds": {
+        "version": 2,
+        "acceptsHWFocus": "No",
+        "showWhenDataModelInvalid": "Show",
+        "whenVisible": "Always",
+        "boundsType": "Absolute",
+        "bounds": "32 100 1216 196",
+        "additionalInvalidatingHandles": [
+         "IndexedEnabling/3/5/Parameter 947"
+        ]
+       }
+      },
+      {
+       "version": 2,
+       "componentData": {
+        "version": 1,
+        "name": "noise",
+        "type": "Image",
+        "data": {
+         "version": 2,
+         "imageType": "FilmStrip",
+         "colour": "0",
+         "image": "col_noise.png",
+         "numFrames": 16,
          "handleName": "Parameter 258"
         }
        },
@@ -20602,7 +20731,7 @@
         "showWhenDataModelInvalid": "Show",
         "whenVisible": "Always",
         "boundsType": "Absolute",
-        "bounds": "32 52 1216 264",
+        "bounds": "32 100 1216 196",
         "additionalInvalidatingHandles": [
          "IndexedEnabling/3/5/Parameter 947"
         ]
@@ -20613,15 +20742,13 @@
        "componentData": {
         "version": 1,
         "name": "drive",
-        "type": "Slider",
+        "type": "Image",
         "data": {
-         "version": 4,
-         "sliderType": "TrackAndThumb",
-         "direction": "Horizontal",
-         "thumbImage": "",
-         "thumbTrackVisible": false,
-         "revealedImage": "col_drive.png",
-         "revealType": "Normal",
+         "version": 2,
+         "imageType": "FilmStrip",
+         "colour": "0",
+         "image": "col_drive.png",
+         "numFrames": 16,
          "handleName": "Parameter 254"
         }
        },
@@ -20635,40 +20762,7 @@
         "showWhenDataModelInvalid": "Show",
         "whenVisible": "Always",
         "boundsType": "Absolute",
-        "bounds": "32 52 1216 264",
-        "additionalInvalidatingHandles": [
-         "IndexedEnabling/3/5/Parameter 947"
-        ]
-       }
-      },
-      {
-       "version": 2,
-       "componentData": {
-        "version": 1,
-        "name": "crush",
-        "type": "Slider",
-        "data": {
-         "version": 4,
-         "sliderType": "TrackAndThumb",
-         "direction": "Horizontal",
-         "thumbImage": "",
-         "thumbTrackVisible": false,
-         "revealedImage": "col_crush.png",
-         "revealType": "Inverted",
-         "handleName": "Invert/Parameter 256"
-        }
-       },
-       "handle remapping": {
-        "version": 1,
-        "map": []
-       },
-       "bounds": {
-        "version": 2,
-        "acceptsHWFocus": "No",
-        "showWhenDataModelInvalid": "Show",
-        "whenVisible": "Always",
-        "boundsType": "Absolute",
-        "bounds": "32 52 1216 264",
+        "bounds": "32 100 1216 196",
         "additionalInvalidatingHandles": [
          "IndexedEnabling/3/5/Parameter 947"
         ]
@@ -21039,7 +21133,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Amount]/Parameter 951"
+          "value": "WithName[Rate]/Parameter 951"
          },
          {
           "key": "QLink",
@@ -21075,7 +21169,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Rate]/Parameter 952"
+          "value": "WithName[Depth]/Parameter 952"
          },
          {
           "key": "QLink",
@@ -21111,7 +21205,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Depth]/Parameter 953"
+          "value": "WithName[Width]/Parameter 953"
          },
          {
           "key": "QLink",
@@ -21147,7 +21241,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Width]/Parameter 954"
+          "value": "WithName[Mix]/Parameter 954"
          },
          {
           "key": "QLink",
@@ -21183,7 +21277,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Send]/Parameter 955"
+          "value": "WithName[Time]/Parameter 955"
          },
          {
           "key": "QLink",
@@ -21219,7 +21313,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Time]/Parameter 956"
+          "value": "WithName[Feedback]/Parameter 956"
          },
          {
           "key": "QLink",
@@ -21255,7 +21349,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Feedback]/Parameter 957"
+          "value": "WithName[Spread]/Parameter 957"
          },
          {
           "key": "QLink",
@@ -21291,7 +21385,7 @@
         "map": [
          {
           "key": "Data",
-          "value": "WithName[Spread]/Parameter 958"
+          "value": "WithName[Mix]/Parameter 958"
          },
          {
           "key": "QLink",

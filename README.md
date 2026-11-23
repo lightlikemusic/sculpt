@@ -90,7 +90,12 @@ their Speed.
 
 ## Presets
 
-Init · Glass Field · Tape Garden · Choir Smear · Pentatonic Rain · Night Bus
+- **Everyday:** Init · Four Loops · Club Night · Deep Drone · Analog Dreams · Ring Bells ·
+  Crushed Kit · Glass Field · Tape Garden · Haze Smear · Pentatonic Rain · Night Bus
+- **Experiments:** Frozen Sky · Shatter Machine · Tape Warp · Spectral Ring · Backwards Cathedral
+
+Presets pick from the ten built-in loops. A file you loaded with the browser stays on its track
+until you pick another sound.
 
 ## Loading your own samples
 
@@ -117,8 +122,9 @@ mixed to mono). Files are cut to 30 seconds, and files over 160 MB are skipped. 
 10 folders deep and lists up to 4,000 folders. A file that can't be read shows "Can't read" in
 SAMPLE, and the track keeps playing what it had.
 
-The built-in loops are the first folder, "Sculpt": `1 Kalimba.wav`, `2 Tape.wav`, `3 Choir.wav`
-and `4 Glass.wav`, in `Content/Samples/`. They're original, synthesised by
+The built-in loops are the first folder, "Sculpt", in `Content/Samples/`: `1 Kalimba`, `2 Tape`,
+`3 Haze` (pad) and `4 Glass` (the four tracks' starting sounds), then `5 Drone`, `6 Analog Pad`,
+`7 Synth Arp`, `8 Air Pad`, `9 Dark Drone` and `10 Club Kick` (a four-on-the-floor kick). They're original, synthesised by
 `art/make_samples.py`, and each is 2 bars at 120 BPM, which is what **Sync** assumes.
 
 ## CPU
