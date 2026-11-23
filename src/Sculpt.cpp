@@ -53,6 +53,11 @@
 #include <thread>
 #include <vector>
 
+// Development builds can write Content/debug.txt (build with -DSCULPT_DEBUG_LOG=1); releases do not.
+#ifndef SCULPT_DEBUG_LOG
+#define SCULPT_DEBUG_LOG 0
+#endif
+
 namespace {
 
 constexpr int kNumTracks = 4;
@@ -258,7 +263,11 @@ public:
         scanner_.start();            // find WAV files on the drives in the background
         loader_.start(&scanner_);
         hostSets_ = std::vector<std::atomic<uint32_t>>((size_t)numParams());
+#if SCULPT_DEBUG_LOG
         debugThread_ = std::thread([this] { debugLoop(); });
+#else
+        std::remove(mpc::contentPath("debug.txt").c_str());   // tidy up after a development build
+#endif
     }
 
     ~Sculpt() override
